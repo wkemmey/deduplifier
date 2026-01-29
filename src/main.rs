@@ -88,9 +88,19 @@ fn init_database(path: &Path) -> Result<Connection> {
 }
 
 fn compute_file_hash(path: &Path) -> Result<String> {
-    let contents = fs::read(path)?;
+    use std::io::Read;
+    let mut file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
-    hasher.update(&contents);
+    let mut buffer = [0; 8192];
+    
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    
     let result = hasher.finalize();
     Ok(format!("{:x}", result))
 }
@@ -195,14 +205,19 @@ fn compute_directory_hash(conn: &Connection, dir_path: &Path, files_by_dir: &Has
     // Get immediate child files
     if let Some(files) = files_by_dir.get(dir_path) {
         for file in files {
-            items.push((file.path.clone(), file.hash.clone(), file.size));
+            // Use just the filename, not the full path
+            if let Some(filename) = Path::new(&file.path).file_name() {
+                items.push((filename.to_string_lossy().to_string(), file.hash.clone(), file.size));
+            }
         }
     }
     
     // Get immediate child directories from database
     let dir_path_str = dir_path.to_string_lossy().to_string();
-    let mut stmt = conn.prepare("SELECT path, hash, size FROM directories")?;
-    let dir_iter = stmt.query_map([], |row| {
+    let mut stmt = conn.prepare("SELECT path, hash, size FROM directories WHERE path LIKE ?1 AND path NOT LIKE ?2")?;
+    let pattern1 = format!("{}%", dir_path_str);
+    let pattern2 = format!("{}%/%", dir_path_str);
+    let dir_iter = stmt.query_map(params![pattern1, pattern2], |row| {
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
@@ -215,7 +230,10 @@ fn compute_directory_hash(conn: &Connection, dir_path: &Path, files_by_dir: &Has
         let child_path = PathBuf::from(&path);
         if let Some(parent) = child_path.parent() {
             if parent == dir_path {
-                items.push((path, hash, size as u64));
+                // Use just the directory name, not the full path
+                if let Some(dirname) = child_path.file_name() {
+                    items.push((dirname.to_string_lossy().to_string(), hash, size as u64));
+                }
             }
         }
     }
@@ -223,11 +241,11 @@ fn compute_directory_hash(conn: &Connection, dir_path: &Path, files_by_dir: &Has
     // Sort items by name for repeatability
     items.sort_by(|a, b| a.0.cmp(&b.0));
     
-    // Compute combined hash
+    // Compute combined hash using only relative names and content hashes
     let mut hasher = Sha256::new();
     let mut total_size = 0u64;
-    for (path, hash, size) in &items {
-        hasher.update(path.as_bytes());
+    for (name, hash, size) in &items {
+        hasher.update(name.as_bytes());
         hasher.update(b":");
         hasher.update(hash.as_bytes());
         hasher.update(b"\n");
@@ -265,8 +283,9 @@ fn find_duplicate_files(conn: &Connection) -> Result<()> {
     for dup in duplicates {
         let (hash, count, total_size) = dup?;
         found_any = true;
+        let hash_display = if hash.len() >= 16 { &hash[..16] } else { &hash };
         println!("\nDuplicate files (hash: {}, count: {}, total size: {} bytes):", 
-                 &hash[..16], count, total_size);
+                 hash_display, count, total_size);
         
         let mut file_stmt = conn.prepare("SELECT path, size FROM files WHERE hash = ?1")?;
         let files = file_stmt.query_map(params![hash], |row| {
@@ -288,11 +307,12 @@ fn find_duplicate_files(conn: &Connection) -> Result<()> {
 
 fn find_duplicate_directories(conn: &Connection) -> Result<()> {
     let mut stmt = conn.prepare(
-        "SELECT hash, COUNT(*) as count, AVG(size) as avg_size 
+        "SELECT hash, COUNT(*) as count, MAX(size) as max_size 
          FROM directories 
+         WHERE hash != 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
          GROUP BY hash 
          HAVING count > 1
-         ORDER BY avg_size DESC"
+         ORDER BY max_size DESC"
     )?;
     
     let duplicates = stmt.query_map([], |row| {
@@ -305,10 +325,11 @@ fn find_duplicate_directories(conn: &Connection) -> Result<()> {
     
     let mut found_any = false;
     for dup in duplicates {
-        let (hash, count, avg_size) = dup?;
+        let (hash, count, max_size) = dup?;
         found_any = true;
-        println!("\nDuplicate directories (hash: {}, count: {}, avg size: {} bytes):", 
-                 &hash[..16], count, avg_size);
+        let hash_display = if hash.len() >= 16 { &hash[..16] } else { &hash };
+        println!("\nDuplicate directories (hash: {}, count: {}, size: {} bytes):", 
+                 hash_display, count, max_size);
         
         let mut dir_stmt = conn.prepare("SELECT path, size FROM directories WHERE hash = ?1")?;
         let dirs = dir_stmt.query_map(params![hash], |row| {

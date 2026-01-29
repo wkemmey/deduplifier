@@ -80,8 +80,8 @@ The tool creates two tables:
 
 ### `directories` table
 - `path` (TEXT, PRIMARY KEY): Full path to the directory
-- `hash` (TEXT): Computed hash based on immediate children
-- `size` (INTEGER): Total size of all files in the directory tree
+- `hash` (TEXT): Computed hash based on immediate children (using relative names, not full paths)
+- `size` (INTEGER): Total size of immediate children
 
 ## Example Output
 
