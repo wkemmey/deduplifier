@@ -32,8 +32,8 @@
     rust-analyzer    # LSP server (devenv includes this but explicit is good)
   ];
 
-  # pre-commit hooks for code quality
-  pre-commit.hooks = {
+  # git hooks for code quality
+  git-hooks.hooks = {
     rustfmt.enable = true;  # auto-format code
     clippy.enable = true;   # linter
   };
