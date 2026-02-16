@@ -27,6 +27,10 @@
     # documentation
     cargo-readme     # generate README from doc comments
     
+    # database tools
+    sqlite           # sqlite command line interface
+    sqlitebrowser    # gui for sqlite databases
+    
     # additional tools
     bacon            # background code checker
     rust-analyzer    # LSP server (devenv includes this but explicit is good)

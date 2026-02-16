@@ -23,3 +23,8 @@ target
 .direnv/
 .devenv.flake.nix
 .pre-commit-config.yaml
+
+# sqlite database files
+*.db
+*.db-shm
+*.db-wal

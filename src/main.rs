@@ -4,6 +4,7 @@ use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use walkdir::WalkDir;
@@ -42,8 +43,13 @@ fn main() -> Result<()> {
             continue;
         }
 
+        println!("Counting files in directory: {:?}", directory);
+        let total_files = count_files(directory)?;
+        println!("Found {} files to process", total_files);
+
         println!("Scanning directory: {:?}", directory);
-        scan_directory(&conn, directory)?;
+        scan_directory(&conn, directory, total_files)?;
+        println!(""); // New line after progress
     }
 
     println!("\n=== Finding Duplicate Files ===");
@@ -53,6 +59,17 @@ fn main() -> Result<()> {
     find_duplicate_directories(&conn)?;
 
     Ok(())
+}
+
+fn count_files(root: &Path) -> Result<usize> {
+    let mut count = 0;
+    for entry in WalkDir::new(root).follow_links(false) {
+        let entry = entry?;
+        if entry.path().is_file() {
+            count += 1;
+        }
+    }
+    Ok(count)
 }
 
 fn init_database(path: &Path) -> Result<Connection> {
@@ -111,6 +128,12 @@ fn compute_file_hash(path: &Path) -> Result<String> {
 fn should_update_file(conn: &Connection, path: &Path, modified: SystemTime) -> Result<bool> {
     // TODO this could cause collisions; let's change to warn if there are filenames
     // with invalid UTF-8 characters
+    // if let Some(valid_str) = path.to_str() {
+    //     // Path is valid UTF-8
+    // } else {
+    //     // Path contains invalid UTF-8
+    //     // Handle or report as needed
+    // }
     let path_str = path.to_string_lossy().to_string();
 
     let mut stmt = conn.prepare("SELECT modified FROM files WHERE path = ?1")?;
@@ -127,8 +150,9 @@ fn should_update_file(conn: &Connection, path: &Path, modified: SystemTime) -> R
     }
 }
 
-fn scan_directory(conn: &Connection, root: &Path) -> Result<()> {
+fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<()> {
     let mut files_by_dir: HashMap<PathBuf, Vec<FileEntry>> = HashMap::new();
+    let mut processed = 0;
 
     // First pass: scan all files
     for entry in WalkDir::new(root).follow_links(false) {
@@ -136,6 +160,16 @@ fn scan_directory(conn: &Connection, root: &Path) -> Result<()> {
         let path = entry.path();
 
         if path.is_file() {
+            processed += 1;
+            let file_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("<unknown>");
+            // \r - return to the start of the line
+            // \x1B[K - clear everything from cursor to end of line
+            print!("\r\x1B[K{}/{} - {}", processed, total_files, file_name);
+            io::stdout().flush()?;
+
             let metadata = fs::metadata(path)?;
             let modified = metadata.modified()?;
             let size = metadata.len();
