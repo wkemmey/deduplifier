@@ -154,27 +154,12 @@ pub fn find_duplicate_directories(
         }
 
         for path in &to_delete {
-            // Retry loop: keep asking until the name matches or the user skips
-            let confirmed = loop {
-                print!(
-                    "  Type the directory name to confirm deletion of\n  '{}'\n  (or 's' to skip) > ",
-                    path
-                );
-                io::stdout().flush()?;
-                let mut confirmation = String::new();
-                stdin.lock().read_line(&mut confirmation)?;
-                let trimmed = confirmation.trim();
-                if trimmed.eq_ignore_ascii_case("s") {
-                    println!("  Skipped.");
-                    break false;
-                } else if trimmed == *path {
-                    break true;
-                } else {
-                    println!("  Name did not match, try again.");
-                }
-            };
-
-            if !confirmed {
+            print!("  Confirm deletion of '{}' [y/N] > ", path);
+            io::stdout().flush()?;
+            let mut confirmation = String::new();
+            stdin.lock().read_line(&mut confirmation)?;
+            if !confirmation.trim().eq_ignore_ascii_case("y") {
+                println!("  Skipped.");
                 continue;
             }
 

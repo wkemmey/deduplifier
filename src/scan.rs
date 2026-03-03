@@ -116,6 +116,8 @@ pub fn scan_directory(
     // LEFT JOIN is used instead of NOT IN so SQLite can use the PRIMARY KEY index
     // on visited_files, avoiding an O(n²) scan with large file sets.
     let root_str = path_to_str(root)?.to_string();
+    println!("\nChecking for stale database entries (this may take several minutes for large directories)...");
+    io::stdout().flush()?;
     let stale_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM files
          LEFT JOIN visited_files ON files.path = visited_files.path
