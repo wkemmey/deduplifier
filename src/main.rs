@@ -35,6 +35,10 @@ struct Args {
     /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep
     #[arg(long)]
     canon: Option<PathBuf>,
+
+    /// skip per-deletion confirmation prompts when --canon has auto-selected the keeper
+    #[arg(long)]
+    no_confirmation: bool,
 }
 
 /// Build the ordered list of directories to scan: canon first (if provided and not already
@@ -92,7 +96,12 @@ fn main() -> Result<()> {
     }
 
     println!("\n=== Finding duplicate directories ===");
-    find_duplicate_directories(&conn, args.delete, args.canon.as_deref())?;
+    find_duplicate_directories(
+        &conn,
+        args.delete,
+        args.canon.as_deref(),
+        args.no_confirmation,
+    )?;
 
     if args.files {
         println!("\n=== Finding duplicate files ===");

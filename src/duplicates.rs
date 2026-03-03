@@ -54,6 +54,7 @@ pub fn find_duplicate_directories(
     conn: &Connection,
     delete: bool,
     canon: Option<&Path>,
+    no_confirmation: bool,
 ) -> Result<()> {
     // Collect all duplicate groups upfront so we can iterate interactively
     let mut stmt = conn.prepare(
@@ -191,12 +192,24 @@ pub fn find_duplicate_directories(
         }
 
         for path in &to_delete {
-            print!("  Confirm deletion of '{}' [y/N] > ", path);
-            io::stdout().flush()?;
-            let mut confirmation = String::new();
-            stdin.lock().read_line(&mut confirmation)?;
-            if !confirmation.trim().eq_ignore_ascii_case("y") {
-                println!("  Skipped.");
+            // When --no-confirmation is set and canon drove the choice, skip the prompt
+            let confirmed = if no_confirmation && auto_keep.is_some() {
+                println!("  Deleting '{}' (--no-confirmation)", path);
+                true
+            } else {
+                print!("  Confirm deletion of '{}' [y/N] > ", path);
+                io::stdout().flush()?;
+                let mut confirmation = String::new();
+                stdin.lock().read_line(&mut confirmation)?;
+                if !confirmation.trim().eq_ignore_ascii_case("y") {
+                    println!("  Skipped.");
+                    false
+                } else {
+                    true
+                }
+            };
+
+            if !confirmed {
                 continue;
             }
 
@@ -261,7 +274,7 @@ mod tests {
     #[test]
     fn test_find_duplicate_dirs_none() {
         let conn = open_test_db();
-        find_duplicate_directories(&conn, false, None).unwrap();
+        find_duplicate_directories(&conn, false, None, false).unwrap();
     }
 
     #[test]
@@ -274,6 +287,6 @@ mod tests {
         )
         .unwrap();
         // delete=false so no interactive prompt is triggered
-        find_duplicate_directories(&conn, false, None).unwrap();
+        find_duplicate_directories(&conn, false, None, false).unwrap();
     }
 }
