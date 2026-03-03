@@ -5,12 +5,15 @@ A Rust command-line application that scans directories, computes hashes for file
 ## Features
 
 - **File Hashing**: Computes SHA-256 hashes for all files in specified directories
-- **Directory Hashing**: Computes non-recursive hashes for directories based on their immediate children (files and subdirectories)
-- **Incremental Updates**: Avoids recalculation by checking file modification times - only rehashes files that have changed
+- **Directory Hashing**: Computes hashes for directories based on their immediate children (files and subdirectories), enabling whole-tree duplicate detection
+- **Incremental Updates**: Avoids recalculation by checking file modification times — only rehashes files that have changed
 - **SQLite Storage**: Stores all hash data with full paths and modification times in a SQLite database
-- **Duplicate Detection**: 
-  - Finds duplicate files (sorted by total size)
-  - Finds duplicate directories (sorted by average size)
+- **Stale Entry Cleanup**: Detects files in the database that no longer exist on disk and offers to remove them
+- **Duplicate Detection**:
+  - Finds duplicate directories (default, sorted by size largest-first)
+  - Finds duplicate files (with `--files`)
+- **Interactive Deletion**: With `--delete`, walks through each duplicate group and asks which copy to keep; requires typing the full path to confirm deletion
+- **Canonical Directory**: With `--canon`, automatically keeps whichever copy lives under the specified path, making bulk cleanup scriptable
 
 ## Installation
 
@@ -35,6 +38,9 @@ deduplifier [OPTIONS] <DIRECTORIES>...
 ### Options
 
 - `-d, --database <DATABASE>`: Database file path (default: `deduplifier.db`)
+- `--files`: Also report duplicate files (in addition to duplicate directories)
+- `--delete`: Interactively delete duplicate directories
+- `--canon <PATH>`: Canonical directory — when a duplicate exists under this path, auto-select it as the copy to keep
 - `-h, --help`: Print help information
 
 ### Examples
@@ -46,7 +52,17 @@ deduplifier /path/to/directory
 
 Scan multiple directories:
 ```bash
-deduplifier /path/to/dir1 /path/to/dir2 /path/to/dir3
+deduplifier /path/to/dir1 /path/to/dir2
+```
+
+Also report duplicate files:
+```bash
+deduplifier --files /path/to/directory
+```
+
+Interactively delete duplicates, keeping whichever copy is under `/my/canon`:
+```bash
+deduplifier --delete --canon /my/canon /path/to/other
 ```
 
 Use a custom database file:
@@ -56,21 +72,24 @@ deduplifier -d my_hashes.db /path/to/directory
 
 ## How It Works
 
-1. **File Scanning**: The tool walks through all specified directories and computes SHA-256 hashes for each file
-2. **Change Detection**: Before hashing, it checks the modification time against the database to avoid unnecessary rehashing
-3. **Directory Hashing**: For each directory, it computes a hash based on:
-   - Hashes of immediate child files
-   - Hashes of immediate child directories
-   - Names are sorted alphabetically for repeatability
-4. **Database Storage**: All hashes, paths, sizes, and modification times are stored in SQLite
-5. **Duplicate Detection**: 
-   - Files with identical hashes are reported as duplicates
-   - Directories with identical hashes are reported as duplicates
-   - Results are sorted by size (largest first)
+1. **File Scanning**: Walks all specified directories, computing SHA-256 hashes for each file. Progress is shown as a single overwriting line.
+2. **Change Detection**: Before hashing, checks the modification time against the database to skip files that haven't changed.
+3. **Stale Cleanup**: After scanning, detects any paths in the database that were not seen on disk, and offers to remove them.
+4. **Directory Hashing**: For each directory, computes a hash based on the names and hashes of its immediate children (files and subdirectories), sorted alphabetically for repeatability. This is done bottom-up so parent hashes incorporate subtree changes.
+5. **Duplicate Detection**: Groups files or directories by hash; reports groups with more than one member, sorted by size.
+6. **Interactive Deletion**: With `--delete`, presents each duplicate group and prompts for which copy to keep. Requires typing the full directory path to confirm — no accidental deletions. Removes deleted paths from the database immediately.
+
+## Code Structure
+
+The codebase is split into modules primarily to keep each piece independently testable. Functions that interact with the database, filesystem, and user all have different testing needs, so separating them means tests can be focused and avoid side effects.
+
+- **`main.rs`**: CLI argument parsing (`clap`) and top-level orchestration only. Also contains `build_scan_list`, which determines scan order (canon directory always first).
+- **`db.rs`**: Database setup (`setup_schema`, `init_database`) and the `should_update_file` query. Isolated here so tests can use an in-memory SQLite connection without touching the filesystem.
+- **`fs.rs`**: Pure filesystem operations — `path_to_str`, `count_files`, `compute_file_hash`, and `compute_directory_hash`. These are straightforward to test with temporary directories and make no database calls.
+- **`scan.rs`**: `scan_directory` ties `db` and `fs` together — it walks the directory tree, hashes new/changed files, tracks visited paths for stale detection, and triggers the bottom-up directory hash pass. Tested with temp directories and in-memory databases.
+- **`duplicates.rs`**: `find_duplicate_files` and `find_duplicate_directories` query the database for hash collisions and handle interactive deletion. Tested by seeding an in-memory database directly, so no filesystem scanning is needed.
 
 ## Database Schema
-
-The tool creates two tables:
 
 ### `files` table
 - `path` (TEXT, PRIMARY KEY): Full path to the file
@@ -80,23 +99,8 @@ The tool creates two tables:
 
 ### `directories` table
 - `path` (TEXT, PRIMARY KEY): Full path to the directory
-- `hash` (TEXT): Computed hash based on immediate children (using relative names, not full paths)
-- `size` (INTEGER): Total size of immediate children
-
-## Example Output
-
-```
-Scanning directory: "/home/user/documents"
-
-=== Finding Duplicate Files ===
-
-Duplicate files (hash: 54c91bb9a50f98a6, count: 2, total size: 104 bytes):
-  - /home/user/documents/folder1/file.txt (52 bytes)
-  - /home/user/documents/folder2/file_copy.txt (52 bytes)
-
-=== Finding Duplicate Directories ===
-No duplicate directories found.
-```
+- `hash` (TEXT): Computed hash based on immediate children (relative names + content hashes)
+- `size` (INTEGER): Total size of all immediate children
 
 ## License
 

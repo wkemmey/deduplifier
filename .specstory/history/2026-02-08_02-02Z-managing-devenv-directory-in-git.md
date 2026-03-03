@@ -6053,3 +6053,86 @@ So what we have — inline unit tests per module — is exactly the idiomatic ap
 
 ---
 
+_**User (2026-03-03 18:37Z)**_
+
+can you update the readme with an explanation of why we broke the project down into files the way that we did?  (main reason was to facilitate testing, but explain with respect to each file)
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/README.md#1-1), lines 1 to 100</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/README.md#1-1), lines 1 to 100
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;markdown\n# Deduplifier\n\nA Rust command-line application that scans directories, computes hashes for files and directories, stores them in a SQLite database, and finds duplicates.\n\n## Features\n\n- **File Hashing**: Computes SHA-256 hashes for all files in specified directories\n- **Directory Hashing**: Computes hashes for directories based on their immediate children (files and subdirectories), enabling whole-tree duplicate detection\n- **Incremental Updates**: Avoids recalculation by checking file modification times — only rehashes files that have changed\n- **SQLite Storage**: Stores all hash data with full paths and modification times in a SQLite database\n- **Stale Entry Cleanup**: Detects files in the database that no longer exist on disk and offers to remove them\n- **Duplicate Detection**:\n  - Finds duplicate directories (default, sorted by size largest-first)\n  - Finds duplicate files (with &#96;--files&#96;)\n- **Interactive Deletion**: With &#96;--delete&#96;, walks through each duplicate group and asks which copy to keep; requires typing the full path to confirm deletion\n- **Canonical Directory**: With &#96;--canon&#96;, automatically keeps whichever copy lives under the specified path, making bulk cleanup scriptable\n\n## Installation\n\n### Build from source\n\n&#96;&#96;&#96;bash\ncargo build --release\n&#96;&#96;&#96;\n\nThe binary will be available at &#96;target/release/deduplifier&#96;.\n\n## Usage\n\n&#96;&#96;&#96;bash\ndeduplifier [OPTIONS] &lt;DIRECTORIES&gt;...\n&#96;&#96;&#96;\n\n### Arguments\n\n- &#96;&lt;DIRECTORIES&gt;...&#96;: One or more directories to scan (required)\n\n### Options\n\n- &#96;-d, --database &lt;DATABASE&gt;&#96;: Database file path (default: &#96;deduplifier.db&#96;)\n- &#96;--files&#96;: Also report duplicate files (in addition to duplicate directories)\n- &#96;--delete&#96;: Interactively delete duplicate directories\n- &#96;--canon &lt;PATH&gt;&#96;: Canonical directory — when a duplicate exists under this path, auto-select it as the copy to keep\n- &#96;-h, --help&#96;: Print help information\n\n### Examples\n\nScan a single directory:\n&#96;&#96;&#96;bash\ndeduplifier /path/to/directory\n&#96;&#96;&#96;\n\nScan multiple directories:\n&#96;&#96;&#96;bash\ndeduplifier /path/to/dir1 /path/to/dir2\n&#96;&#96;&#96;\n\nAlso report duplicate files:\n&#96;&#96;&#96;bash\ndeduplifier --files /path/to/directory\n&#96;&#96;&#96;\n\nInteractively delete duplicates, keeping whichever copy is under &#96;/my/canon&#96;:\n&#96;&#96;&#96;bash\ndeduplifier --delete --canon /my/canon /path/to/other\n&#96;&#96;&#96;\n\nUse a custom database file:\n&#96;&#96;&#96;bash\ndeduplifier -d my_hashes.db /path/to/directory\n&#96;&#96;&#96;\n\n## How It Works\n\n1. **File Scanning**: Walks all specified directories, computing SHA-256 hashes for each file. Progress is shown as a single overwriting line.\n2. **Change Detection**: Before hashing, checks the modification time against the database to skip files that haven't changed.\n3. **Stale Cleanup**: After scanning, detects any paths in the database that were not seen on disk, and offers to remove them.\n4. **Directory Hashing**: For each directory, computes a hash based on the names and hashes of its immediate children (files and subdirectories), sorted alphabetically for repeatability. This is done bottom-up so parent hashes incorporate subtree changes.\n5. **Duplicate Detection**: Groups files or directories by hash; reports groups with more than one member, sorted by size.\n6. **Interactive Deletion**: With &#96;--delete&#96;, presents each duplicate group and prompts for which copy to keep. Requires typing the full directory path to confirm — no accidental deletions. Removes deleted paths from the database immediately.\n\n## Code Structure\n\nThe codebase is split into modules primarily to keep each piece independently testable. Functions that interact with the database, filesystem, and user all have different testing needs, so separating them means tests can be focused and avoid side effects.\n\n- **&#96;main.rs&#96;**: CLI argument parsing (&#96;clap&#96;) and top-level orchestration only. Also contains &#96;build_scan_list&#96;, which determines scan order (canon directory always first).\n- **&#96;db.rs&#96;**: Database setup (&#96;setup_schema&#96;, &#96;init_database&#96;) and the &#96;should_update_file&#96; query. Isolated here so tests can use an in-memory SQLite connection without touching the filesystem.\n- **&#96;fs.rs&#96;**: Pure filesystem operations — &#96;path_to_str&#96;, &#96;count_files&#96;, &#96;compute_file_hash&#96;, and &#96;compute_directory_hash&#96;. These are straightforward to test with temporary directories and make no database calls.\n- **&#96;scan.rs&#96;**: &#96;scan_directory&#96; ties &#96;db&#96; and &#96;fs&#96; together — it walks the directory tree, hashes new/changed files, tracks visited paths for stale detection, and triggers the bottom-up directory hash pass. Tested with temp directories and in-memory databases.\n- **&#96;duplicates.rs&#96;**: &#96;find_duplicate_files&#96; and &#96;find_duplicate_directories&#96; query the database for hash collisions and handle interactive deletion. Tested by seeding an in-memory database directly, so no filesystem scanning is needed.\n\n## Database Schema\n\n### &#96;files&#96; table\n- &#96;path&#96; (TEXT, PRIMARY KEY): Full path to the file\n- &#96;hash&#96; (TEXT): SHA-256 hash of the file content\n- &#96;size&#96; (INTEGER): File size in bytes\n- &#96;modified&#96; (INTEGER): Unix timestamp of last modification\n\n### &#96;directories&#96; table\n- &#96;path&#96; (TEXT, PRIMARY KEY): Full path to the directory\n- &#96;hash&#96; (TEXT): Computed hash based on immediate children (relative names + content hashes)\n- &#96;size&#96; (INTEGER): Total size of all immediate children\n\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "# Deduplifier\n\nA Rust command-line application that scans directories, computes hashes for files and directories, stores them in a SQLite database, and finds duplicates.\n\n## Features\n\n- **File Hashing**: Computes SHA-256 hashes for all files in specified directories\n- **Directory Hashing**: Computes hashes for directories based on their immediate children (files and subdirectories), enabling whole-tree duplicate detection\n- **Incremental Updates**: Avoids recalculation by checking file modification times — only rehashes files that have changed\n- **SQLite Storage**: Stores all hash data with full paths and modification times in a SQLite database\n- **Stale Entry Cleanup**: Detects files in the database that no longer exist on disk and offers to remove them\n- **Duplicate Detection**:\n  - Finds duplicate directories (default, sorted by size largest-first)\n  - Finds duplicate files (with &#96;--files&#96;)\n- **Interactive Deletion**: With &#96;--delete&#96;, walks through each duplicate group and asks which copy to keep; requires typing the full path to confirm deletion\n- **Canonical Directory**: With &#96;--canon&#96;, automatically keeps whichever copy lives under the specified path, making bulk cleanup scriptable\n\n## Installation\n\n### Build from source\n\n&#96;&#96;&#96;bash\ncargo build --release\n&#96;&#96;&#96;\n\nThe binary will be available at &#96;target/release/deduplifier&#96;.\n\n## Usage\n\n&#96;&#96;&#96;bash\ndeduplifier [OPTIONS] &lt;DIRECTORIES&gt;...\n&#96;&#96;&#96;\n\n### Arguments\n\n- &#96;&lt;DIRECTORIES&gt;...&#96;: One or more directories to scan (required)\n\n### Options\n\n- &#96;-d, --database &lt;DATABASE&gt;&#96;: Database file path (default: &#96;deduplifier.db&#96;)\n- &#96;--files&#96;: Also report duplicate files (in addition to duplicate directories)\n- &#96;--delete&#96;: Interactively delete duplicate directories\n- &#96;--canon &lt;PATH&gt;&#96;: Canonical directory — when a duplicate exists under this path, auto-select it as the copy to keep\n- &#96;-h, --help&#96;: Print help information\n\n### Examples\n\nScan a single directory:\n&#96;&#96;&#96;bash\ndeduplifier /path/to/directory\n&#96;&#96;&#96;\n\nScan multiple directories:\n&#96;&#96;&#96;bash\ndeduplifier /path/to/dir1 /path/to/dir2\n&#96;&#96;&#96;\n\nAlso report duplicate files:\n&#96;&#96;&#96;bash\ndeduplifier --files /path/to/directory\n&#96;&#96;&#96;\n\nInteractively delete duplicates, keeping whichever copy is under &#96;/my/canon&#96;:\n&#96;&#96;&#96;bash\ndeduplifier --delete --canon /my/canon /path/to/other\n&#96;&#96;&#96;\n\nUse a custom database file:\n&#96;&#96;&#96;bash\ndeduplifier -d my_hashes.db /path/to/directory\n&#96;&#96;&#96;\n\n## How It Works\n\n1. **File Scanning**: Walks all specified directories, computing SHA-256 hashes for each file. Progress is shown as a single overwriting line.\n2. **Change Detection**: Before hashing, checks the modification time against the database to skip files that haven't changed.\n3. **Stale Cleanup**: After scanning, detects any paths in the database that were not seen on disk, and offers to remove them.\n4. **Directory Hashing**: For each directory, computes a hash based on the names and hashes of its immediate children (files and subdirectories), sorted alphabetically for repeatability. This is done bottom-up so parent hashes incorporate subtree changes.\n5. **Duplicate Detection**: Groups files or directories by hash; reports groups with more than one member, sorted by size.\n6. **Interactive Deletion**: With &#96;--delete&#96;, presents each duplicate group and prompts for which copy to keep. Requires typing the full directory path to confirm — no accidental deletions. Removes deleted paths from the database immediately.\n\n## Code Structure\n\nThe codebase is split into modules primarily to keep each piece independently testable. Functions that interact with the database, filesystem, and user all have different testing needs, so separating them means tests can be focused and avoid side effects.\n\n- **&#96;main.rs&#96;**: CLI argument parsing (&#96;clap&#96;) and top-level orchestration only. Also contains &#96;build_scan_list&#96;, which determines scan order (canon directory always first).\n- **&#96;db.rs&#96;**: Database setup (&#96;setup_schema&#96;, &#96;init_database&#96;) and the &#96;should_update_file&#96; query. Isolated here so tests can use an in-memory SQLite connection without touching the filesystem.\n- **&#96;fs.rs&#96;**: Pure filesystem operations — &#96;path_to_str&#96;, &#96;count_files&#96;, &#96;compute_file_hash&#96;, and &#96;compute_directory_hash&#96;. These are straightforward to test with temporary directories and make no database calls.\n- **&#96;scan.rs&#96;**: &#96;scan_directory&#96; ties &#96;db&#96; and &#96;fs&#96; together — it walks the directory tree, hashes new/changed files, tracks visited paths for stale detection, and triggers the bottom-up directory hash pass. Tested with temp directories and in-memory databases.\n- **&#96;duplicates.rs&#96;**: &#96;find_duplicate_files&#96; and &#96;find_duplicate_directories&#96; query the database for hash collisions and handle interactive deletion. Tested by seeding an in-memory database directly, so no filesystem scanning is needed.\n\n## Database Schema\n\n### &#96;files&#96; table\n- &#96;path&#96; (TEXT, PRIMARY KEY): Full path to the file\n- &#96;hash&#96; (TEXT): SHA-256 hash of the file content\n- &#96;size&#96; (INTEGER): File size in bytes\n- &#96;modified&#96; (INTEGER): Unix timestamp of last modification\n\n### &#96;directories&#96; table\n- &#96;path&#96; (TEXT, PRIMARY KEY): Full path to the directory\n- &#96;hash&#96; (TEXT): Computed hash based on immediate children (relative names + content hashes)\n- &#96;size&#96; (INTEGER): Total size of all immediate children\n",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+The README is quite out of date — it's missing the `--files`, `--delete`, `--canon` flags, the stale cleanup feature, and of course any mention of the module structure. I'll update it fully: Done. The README now reflects the current state of the program and includes a **Code Structure** section that explains each module and the reasoning behind the split. The old example output section was also removed since it was stale and the new usage examples cover the important cases.
+
+---
+
+_**User (2026-03-03 18:38Z)**_
+
+is the examples.md file redundant now, or does it need to be updated?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/EXAMPLES.md)</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/EXAMPLES.md)
+
+</details>
+</tool-use>
+
+---
+
+It's partially redundant with the README now, but it has some value the README doesn't — specifically the **incremental update timing example** and the **"results sorted by size" note**. However it's also quite stale: missing `--files`, `--delete`, `--canon`, the progress indicator, and the stale cleanup prompt.
+
+I'd say update it rather than delete it — it's a good place for more verbose walkthrough examples that would feel too long in the README. Want me to update it?
+
+---
+

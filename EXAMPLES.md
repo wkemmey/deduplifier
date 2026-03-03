@@ -1,19 +1,31 @@
 # Example Usage
 
-This file demonstrates some example usage scenarios for deduplifier.
+This file demonstrates common usage scenarios for deduplifier.
 
 ## Basic Usage
 
-Scan a single directory:
+Scan a single directory and report duplicate directories:
 ```bash
 cargo run -- /path/to/directory
 ```
 
+Or with the release build:
+```bash
+./target/release/deduplifier /path/to/directory
+```
+
 ## Multiple Directories
 
-Scan multiple directories at once:
+Scan multiple directories at once — duplicates across them will be found:
 ```bash
 cargo run -- /home/user/documents /home/user/downloads /mnt/backup
+```
+
+## Also Report Duplicate Files
+
+By default only duplicate directories are shown. Pass `--files` to also report duplicate files:
+```bash
+cargo run -- --files /path/to/directory
 ```
 
 ## Custom Database
@@ -23,46 +35,76 @@ Use a custom database file location:
 cargo run -- --database /path/to/my_hashes.db /path/to/directory
 ```
 
-## Example Output
+## Interactive Deletion
 
-When you run deduplifier on a directory with duplicates:
+Pass `--delete` to interactively choose which copy of each duplicate directory to keep.
+You will be shown a numbered list and asked to type the full path of each directory
+you want to delete to confirm — there are no accidental deletions:
 
 ```
-$ cargo run -- /tmp/test_dirs
-Scanning directory: "/tmp/test_dirs"
+$ cargo run -- --delete /home/user/photos /mnt/backup/photos
 
-=== Finding Duplicate Files ===
+Duplicate directories (hash: 98eb7d7eb5758bad…, count: 2, size: 524288000 bytes each):
+  [1] /home/user/photos/vacation_2023 (524288000 bytes)
+  [2] /mnt/backup/photos/vacation_2023 (524288000 bytes)
+  Keep which? (1-2, or 's' to skip): 1
+  Keeping:  /home/user/photos/vacation_2023
+  Will permanently delete:
+    - /mnt/backup/photos/vacation_2023
+  Type the directory name to confirm deletion of
+  '/mnt/backup/photos/vacation_2023'
+  > /mnt/backup/photos/vacation_2023
+  Deleted '/mnt/backup/photos/vacation_2023'.
+  Removed '/mnt/backup/photos/vacation_2023' and its contents from the database.
+```
 
-Duplicate files (hash: c70f8f950cbcbddf, count: 3, total size: 21 bytes):
-  - /tmp/test_dirs/folder1/file.txt (7 bytes)
-  - /tmp/test_dirs/folder2/copy.txt (7 bytes)
-  - /tmp/test_dirs/backup/file.txt (7 bytes)
+## Canonical Directory
 
-=== Finding Duplicate Directories ===
+If you have a known "source of truth" directory (e.g. a primary drive), use `--canon`
+to automatically keep whichever copy lives there, without being prompted for each group.
+The canon directory is always scanned first so its hashes are in the database before
+the others are compared against it:
 
-Duplicate directories (hash: 98eb7d7eb5758bad, count: 2, size: 42 bytes):
-  - /tmp/test_dirs/backup_2024 (42 bytes)
-  - /tmp/test_dirs/backup_2023 (42 bytes)
+```bash
+cargo run -- --delete --canon /home/user/photos /mnt/backup/photos
+```
+
+This will auto-select any duplicate found under `/home/user/photos` as the keeper and
+delete the copy under `/mnt/backup/photos` after type-to-confirm.
+
+## Stale Entry Cleanup
+
+If files have been deleted from disk since the last scan, deduplifier will detect them
+and offer to remove the stale entries from the database:
+
+```
+3 file(s) in the database no longer exist on disk under "/home/user/photos".
+Delete them from the database? [y/N]
 ```
 
 ## Incremental Updates
 
-The tool tracks file modification times. Running it again on the same directory without changes is very fast:
+The tool tracks file modification times. Running it again on the same directory
+without changes is very fast because unchanged files are loaded from the database
+rather than rehashed:
 
-First run:
+First run (all files hashed):
 ```bash
 $ time cargo run -- /large/directory
-... (processes all files)
-real    0m15.234s
+Found 48301 files to process
+...
+real    2m14s
 ```
 
-Second run (no changes):
+Second run (no changes — hashes loaded from DB):
 ```bash
 $ time cargo run -- /large/directory
-... (skips unchanged files)
-real    0m0.342s
+Found 48301 files to process
+...
+real    0m3.1s
 ```
 
 ## Finding Large Duplicates
 
-Results are sorted by size, so the largest duplicates appear first. This helps identify the biggest space-saving opportunities.
+Results are sorted by size largest-first, so the biggest space-saving opportunities
+appear at the top.
