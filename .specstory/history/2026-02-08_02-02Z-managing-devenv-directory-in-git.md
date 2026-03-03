@@ -3874,3 +3874,61 @@ Sounds good! Let me know when you're ready to tackle the next item from your TOD
 
 ---
 
+_**User (2026-03-03 02:39Z)**_
+
+i'm worried about potential problems that could be caused by invalid utf-8 characters--could these end up in the database and then that filename doesn't match anything on disk, or cause false duplicates, or anything like that?  one thing i could do is just force the user to rename the file, or exit the program and report the error.  am i right to be concerned, and what would you recommend as a solution?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="search" data-tool-name="copilot_findTextInFiles">
+<details>
+<summary>Tool use: **copilot_findTextInFiles** • Searching for text `to_string_lossy` (`**/src/main.rs`)</summary>
+
+
+Searched for text `to_string_lossy` (`**/src/main.rs`), 6 results
+
+</details>
+</tool-use>
+
+---
+
+You're right to be concerned. Let me trace the exact risk: There are 6 places using `to_string_lossy()`. Here's the precise risk analysis:
+
+**Real risks:**
+
+1. **False duplicates in directory hashing** (lines 312, 342): Two files/dirs with *different* non-UTF-8 names could both be replaced with `?` and hash identically → incorrect directory hash → false duplicate directories reported. This is a genuine bug.
+
+2. **DB path ≠ disk path** (lines 151, 197): A path with `?` stored in the DB can never match the real on-disk path when you try to delete it via `fs::remove_dir_all`. The deletion would fail silently or panic.
+
+3. **Stale entry cleanup broken** (line 251): The `LIKE` pattern comparison would also mismatch, so stale entries might not be cleaned up correctly.
+
+**Not a real risk:**
+- False duplicate *files* — file hashes are computed from content, not path, so paths don't affect hash correctness.
+
+**My recommendation: fail fast with a clear error**
+
+On Linux/NixOS, non-UTF-8 filenames are extremely rare in practice (usually only created by accidents or legacy software). Failing with a clear message is the right call:
+
+```
+Error: file path contains invalid UTF-8 characters: /some/path/<invalid bytes>
+Please rename this file and re-run deduplifier.
+```
+
+This is better than silent corruption. Want me to implement this? I'll replace all `to_string_lossy()` calls with a helper function that returns an error on invalid UTF-8, giving the user the exact problematic path.
+
+---
+
+_**User (2026-03-03 02:45Z)**_
+
+yes, just make sure that error is detected before anything is added to the database so we can pick back up kind of where we left off when we re-run deduplifier (will scan again, but already hashed files won't need to be rehashed)--wait, i just thought of something:  there is a case where i'm running this overnight, and it would suck if 5 minutes after i walk away, this error occurs and i don't make any more progress that night.  how hard would it be to report the errors but continue hashing files (the thing that take so much time), but refuse to do any duplicate finding until re-run.  as long as the problem files are not added to the database, we will find them again the next time we run if they haven't been fixed.  would this approach work?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+
+
+---
+

@@ -41,10 +41,22 @@ struct FileEntry {
     size: u64,
 }
 
+/// Convert a Path to a &str, returning a clear error if the path contains invalid UTF-8.
+/// Files with invalid paths are skipped (not added to the DB) so the scan can continue.
+fn path_to_str(path: &Path) -> Result<&str> {
+    path.to_str().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Path contains invalid UTF-8 characters: {}",
+            path.to_string_lossy()
+        )
+    })
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
 
     let conn = init_database(&args.database)?;
+    let mut total_invalid_paths = 0usize;
 
     for directory in &args.directories {
         if !directory.exists() {
@@ -60,8 +72,18 @@ fn main() -> Result<()> {
         println!("Found {} files to process", total_files);
 
         println!("Scanning directory: {:?}", directory);
-        scan_directory(&conn, directory, total_files)?;
+        let invalid = scan_directory(&conn, directory, total_files)?;
+        total_invalid_paths += invalid;
         println!(""); // New line after progress
+    }
+
+    if total_invalid_paths > 0 {
+        eprintln!(
+            "\nWarning: {} file path(s) with invalid UTF-8 were skipped during this scan.",
+            total_invalid_paths
+        );
+        eprintln!("Please rename these files and re-run to get duplicate results.");
+        return Ok(());
     }
 
     println!("\n=== Finding Duplicate Directories ===");
@@ -140,15 +162,7 @@ fn compute_file_hash(path: &Path) -> Result<String> {
 }
 
 fn should_update_file(conn: &Connection, path: &Path, modified: SystemTime) -> Result<bool> {
-    // TODO this could cause collisions; let's change to warn if there are filenames
-    // with invalid UTF-8 characters
-    // if let Some(valid_str) = path.to_str() {
-    //     // Path is valid UTF-8
-    // } else {
-    //     // Path contains invalid UTF-8
-    //     // Handle or report as needed
-    // }
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_to_str(path)?;
 
     let mut stmt = conn.prepare("SELECT modified FROM files WHERE path = ?1")?;
 
@@ -164,9 +178,10 @@ fn should_update_file(conn: &Connection, path: &Path, modified: SystemTime) -> R
     }
 }
 
-fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<()> {
+fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<usize> {
     let mut files_by_dir: HashMap<PathBuf, Vec<FileEntry>> = HashMap::new();
     let mut processed = 0;
+    let mut invalid_paths = 0usize;
 
     // Create a temp table to track all files seen in this scan
     conn.execute_batch(
@@ -194,7 +209,14 @@ fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<
             let modified = metadata.modified()?;
             let size = metadata.len();
 
-            let path_str = path.to_string_lossy().to_string();
+            let path_str = match path_to_str(path) {
+                Ok(s) => s.to_string(),
+                Err(e) => {
+                    eprintln!("\nWarning: skipping file with invalid UTF-8 path: {}", e);
+                    invalid_paths += 1;
+                    continue;
+                }
+            };
             conn.execute(
                 "INSERT OR IGNORE INTO visited_files (path) VALUES (?1)",
                 params![path_str],
@@ -248,7 +270,7 @@ fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<
     }
 
     // Find files in DB under root that were not seen in this scan
-    let root_str = root.to_string_lossy().to_string();
+    let root_str = path_to_str(root)?.to_string();
     let stale_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM files WHERE path LIKE ?1 AND path NOT IN (SELECT path FROM visited_files)",
         params![format!("{}%", root_str)],
@@ -293,7 +315,7 @@ fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<
         compute_directory_hash(conn, &dir_path, &files_by_dir)?;
     }
 
-    Ok(())
+    Ok(invalid_paths)
 }
 
 fn compute_directory_hash(
@@ -318,7 +340,7 @@ fn compute_directory_hash(
     }
 
     // Get immediate child directories from database
-    let dir_path_str = dir_path.to_string_lossy().to_string();
+    let dir_path_str = path_to_str(dir_path)?.to_string();
     let mut stmt = conn.prepare(
         "SELECT path, hash, size FROM directories WHERE path LIKE ?1 AND path NOT LIKE ?2",
     )?;
