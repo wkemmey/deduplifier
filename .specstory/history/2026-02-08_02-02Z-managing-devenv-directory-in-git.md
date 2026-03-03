@@ -7181,3 +7181,196 @@ Duplicate directories (hash: 98eb7d7e…, count: 2, size: 524288000 bytes each):
 
 ---
 
+_**User (2026-03-03 22:12Z)**_
+
+how could i implement functionality to tell if two directories (and their subdirectories) are close to the same and to merge them, preferring newer files?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+This is a significantly more complex feature. Let me break down the pieces:
+
+---
+
+### What "close to the same" means
+
+You'd need a similarity metric. The simplest practical one: **what percentage of files (by name + relative path) exist in both directories?** Two directories are "close" if, say, >80% of files match by path. You could make the threshold configurable with a `--similarity` flag.
+
+Exact hash matches aren't required for this — you're comparing *structure* (which files exist where), not content.
+
+---
+
+### What "merge preferring newer files" means
+
+For each file that exists in both:
+- If hashes are identical → keep either, delete the duplicate
+- If hashes differ → keep whichever has the newer modification time
+
+For files that exist in only one:
+- Copy them to the other directory (or just leave them there if you're deleting one dir afterward)
+
+---
+
+### Implementation sketch
+
+1. **Compare phase**: Given two directory paths, walk both and build a map of `relative_path → (hash, modified)` for each. These are already in the DB from the scan.
+2. **Classify each file**:
+   - `identical` → same hash
+   - `conflict` → same relative path, different hash
+   - `only_in_A` / `only_in_B` → missing from one side
+3. **Compute similarity score**: `identical / total_unique_paths`
+4. **Show the user a summary** before doing anything:
+   ```
+   /photos/vacation_2023 vs /backup/vacation_2023
+   Similarity: 94% (312 identical, 8 conflicts, 3 only in source, 12 only in dest)
+   ```
+5. **Merge**: For conflicts, copy the newer file over the older. For `only_in_B` files, copy them into A (or skip, depending on preference).
+6. **After merge**: Re-scan and the directories should now be identical → normal duplicate deletion applies.
+
+---
+
+### Complexity concerns
+
+- **Conflicts where both are newer in different ways** — you'd want to show those to the user rather than silently overwriting
+- **Subdirectories**: the recursion has to be handled carefully — you're comparing relative paths across two roots
+- **It touches real files**: much higher stakes than read-only duplicate detection, so you'd want a `--dry-run` flag that shows what *would* happen without doing it
+
+---
+
+This would probably live in a new `merge.rs` module and be triggered by a `--merge` flag alongside `--delete`. It's a substantial feature but well within reach of the existing architecture since all the hash/path data is already in the DB.
+
+Want to start on it, or is this more of a future consideration?
+
+---
+
+_**User (2026-03-03 22:18Z)**_
+
+when we are deleting files from the db that no longer exist on disk, we are only doing that in the directories we are scanning, right?  so later when i am looking at other directories, i don't have to rehash
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Yes, exactly. The stale cleanup query is scoped to the current scan root:
+
+```sql
+WHERE files.path LIKE ?1  -- ?1 is "/your/scan/root%"
+```
+
+So it only touches entries under the directory you're currently scanning. Everything else in the database is left completely untouched, hashes and all. When you later scan a different directory, those files are still in the DB and will be loaded rather than rehashed.
+
+---
+
+_**User (2026-03-03 22:21Z)**_
+
+ok, on my current run, i have 4020 sets of duplicate directories.  that's a lot to go through by hand.  i am concerned that i am making the cleanup process harder in this way:  if there are two similar but not identical directories, there may be lots of subdirectories that are identical, that i then remove from one or the other of the original directories--but now two directories that used to be similar are now dissimilr due to the "holes" created by deleting duplicate subdirs, and now i have to merge the remnants by hand.  maybe this problem is better if i choose a canon and always delete non-canon, but i'm looking for ways to reduce this mess.  any ideas?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+This is a real problem and you've identified it precisely. Here are some ideas, roughly in order of how much they'd help:
+
+---
+
+### 1. Filter out subdirectories of duplicates (biggest win)
+
+If `/photos/vacation` and `/backup/vacation` are duplicates, and both contain `/photos/vacation/day1` and `/backup/vacation/day1`, you're currently seeing `day1` as a separate duplicate group. Deleting `day1` from one side before dealing with `vacation` creates exactly the holes you're describing.
+
+The fix: **suppress any duplicate directory that is itself a subdirectory of another duplicate directory in the same run.** If you're going to delete `/backup/vacation` wholesale, you don't need to separately deal with any of its subdirs.
+
+This would dramatically reduce 4020 groups to just the top-level ones.
+
+---
+
+### 2. Process largest-first (already doing this)
+
+You're already ordering by `MAX(size) DESC`, which helps — larger directories are more likely to be the "parent" duplicates. But it doesn't prevent the subdirectory problem unless you actively filter.
+
+---
+
+### 3. `--canon` + batch delete (safest for your situation)
+
+With a canon set, every group auto-selects and just needs `y`. But with 4020 groups that's still 4020 confirmations. You could add a `--yes` flag that skips all confirmation when `--canon` is also set — since canon makes the choice deterministic, the only risk is deleting something you didn't intend to scan.
+
+---
+
+### 4. Show a summary first, delete after
+
+Instead of deleting interactively as you go, collect all the decisions first and show a summary of everything that *would* be deleted, then ask for one final confirmation. This lets you see the full picture before committing.
+
+---
+
+### My recommendation for your situation
+
+**Start with #1** — suppressing subdirectory duplicates. This alone will likely reduce 4020 groups to a much smaller number of truly independent top-level duplicates, which makes everything else manageable. Combined with `--canon` + `--yes`, cleanup could be nearly automatic.
+
+Want me to implement the subdirectory suppression (#1)?
+
+---
+
+_**User (2026-03-03 22:25Z)**_
+
+if we process largest first, aren't we effectively filtering out subdirectories, because subdirectories of duplicates will always be smaller than the duplicates (if total bytes includes the subdirs--does it?).  the subdirs will show up in the count (4020) but will be gone by the time we would process them--or will they still show up?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/hashing.rs#95-95), lines 95 to 120</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/hashing.rs#95-95), lines 95 to 120
+
+</details>
+</tool-use>
+
+---
+
+Good thinking, but there are two separate issues:
+
+**Does size include subdirectories?** Let's check: Yes, `total_size` sums the sizes of both immediate files *and* immediate subdirectories (which themselves already rolled up their subtrees bottom-up). So a parent directory's size does include all descendants.
+
+**So your reasoning is correct in theory** — a parent duplicate will always be larger than any of its subduplicate subdirectories, and processing largest-first means you'd delete the parent before ever reaching the subdirs.
+
+**But the subdirs won't disappear from the list.** The `duplicate_groups` are collected from the database *before* any deletions happen. When you delete a parent directory, you remove it from the DB, but the subdir entries were already loaded into `duplicate_groups` at the start. So you'll still be prompted for them — except the directory no longer exists on disk, so the delete will just print `'...' no longer exists on disk, skipping.` and clean up the DB entry.
+
+So the current behavior isn't *wrong* — it handles it gracefully — but it is **noisy**: you'll still be prompted for all 4020 groups even though many will already be gone. The suppression fix would eliminate those prompts entirely by checking at display time whether any path in a group is already under a directory that's been deleted.
+
+Want me to implement that — skip groups where all paths are already gone or are subdirectories of already-deleted directories?
+
+---
+
+_**User (2026-03-03 22:26Z)**_
+
+how hard is it to filter out directories that are already subdirectories of duplicates so that my count is accurate?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Not hard at all. The logic is: for each duplicate group, check if *every* directory in that group has a parent that is itself in a duplicate group. If so, it's fully covered and can be excluded.
+
+Since we already have all the duplicate directory paths in `duplicate_groups` before we start, we can build a set of all duplicate paths and then filter out any group where all members' paths start with another duplicate path.
+
+The trickiest part is doing it correctly — a path like `/foo/bar` should only be suppressed if `/foo` is a duplicate, not just any path that happens to be a prefix string. We need proper path prefix checking (using `Path::starts_with`, which we already use elsewhere).
+
+Want me to implement it? It would replace the raw count with the filtered count, so `Found X set(s)` reflects only the top-level groups you actually need to deal with, and subdirectory groups are silently skipped during iteration.
+
+---
+
+_**User (2026-03-03 22:27Z)**_
+
+yes please
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+
+
+---
+

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use rusqlite::{params, Connection};
+use std::collections::HashSet;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
@@ -79,15 +80,12 @@ pub fn find_duplicate_directories(
         return Ok(());
     }
 
-    println!(
-        "Found {} set(s) of duplicate directories.",
-        duplicate_groups.len()
-    );
-
-    let stdin = io::stdin();
-
+    // For each group, fetch its member paths upfront.
+    // Then filter out groups where every member is a subdirectory of a path
+    // that itself appears in another duplicate group — those will be handled
+    // implicitly when the parent duplicate is deleted.
+    let mut groups_with_paths: Vec<(String, i64, i64, Vec<(String, i64)>)> = Vec::new();
     for (hash, count, max_size) in &duplicate_groups {
-        // Fetch the directories in this group
         let mut dir_stmt =
             conn.prepare("SELECT path, size FROM directories WHERE hash = ?1 ORDER BY path")?;
         let dirs: Vec<(String, i64)> = dir_stmt
@@ -95,7 +93,41 @@ pub fn find_duplicate_directories(
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })?
             .collect::<rusqlite::Result<_>>()?;
+        groups_with_paths.push((hash.clone(), *count, *max_size, dirs));
+    }
 
+    // Build a flat set of all paths that appear in any duplicate group
+    let all_dup_paths: HashSet<&str> = groups_with_paths
+        .iter()
+        .flat_map(|(_, _, _, dirs)| dirs.iter().map(|(p, _)| p.as_str()))
+        .collect();
+
+    // A group is "covered" if every one of its members is a strict subdirectory
+    // of some other path in all_dup_paths (i.e. not the path itself)
+    let is_covered = |dirs: &[(String, i64)]| -> bool {
+        dirs.iter().all(|(p, _)| {
+            let candidate = Path::new(p);
+            all_dup_paths.iter().any(|other| {
+                let other_path = Path::new(other);
+                other_path != candidate && candidate.starts_with(other_path)
+            })
+        })
+    };
+
+    let top_level_groups: Vec<&(String, i64, i64, Vec<(String, i64)>)> = groups_with_paths
+        .iter()
+        .filter(|(_, _, _, dirs)| !is_covered(dirs))
+        .collect();
+
+    println!(
+        "Found {} set(s) of duplicate directories ({} are subdirectories of other duplicates and will be skipped).",
+        top_level_groups.len(),
+        groups_with_paths.len() - top_level_groups.len(),
+    );
+
+    let stdin = io::stdin();
+
+    for (hash, count, max_size, dirs) in &top_level_groups {
         let hash_display = if hash.len() >= 16 { &hash[..16] } else { hash };
         println!(
             "\nDuplicate directories (hash: {}…, count: {}, size: {} bytes each):",
