@@ -7068,3 +7068,116 @@ Anything other than `y` (including just pressing Enter) skips the deletion.
 
 ---
 
+_**User (2026-03-03 21:58Z)**_
+
+is it difficult to tell how many sets of duplicate directories we found?  if not, let's tell the user right before we start showing sets
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/duplicates.rs#60-60), lines 60 to 85</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/duplicates.rs#60-60), lines 60 to 85
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    if duplicate_groups.is_empty() {\n        println!(\"No duplicate directories found.\");\n        return Ok(());\n    }\n\n    println!(\"Found {} set(s) of duplicate directories.\", duplicate_groups.len());\n\n    let stdin = io::stdin();\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    if duplicate_groups.is_empty() {\n        println!(\"No duplicate directories found.\");\n        return Ok(());\n    }\n\n    println!(\"Found {} set(s) of duplicate directories.\", duplicate_groups.len());\n\n    let stdin = io::stdin();",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "9c25de5d-1012-4b30-b860-2d3eaf5d41c4",
+  "terminalCommandId": "tool-f2a4f831-845e-4afe-bd42-045d66679e49",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Not difficult at all — we already collect all the groups into `duplicate_groups` before iterating. We just need to print the count before the loop. Done. You'll now see something like:
+
+```
+=== Finding Duplicate Directories ===
+Found 47 set(s) of duplicate directories.
+
+Duplicate directories (hash: 98eb7d7e…, count: 2, size: 524288000 bytes each):
+  [1] /home/user/photos/vacation_2023 ...
+```
+
+---
+

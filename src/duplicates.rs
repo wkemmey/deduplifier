@@ -79,6 +79,11 @@ pub fn find_duplicate_directories(
         return Ok(());
     }
 
+    println!(
+        "Found {} set(s) of duplicate directories.",
+        duplicate_groups.len()
+    );
+
     let stdin = io::stdin();
 
     for (hash, count, max_size) in &duplicate_groups {
