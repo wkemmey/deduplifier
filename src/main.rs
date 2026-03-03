@@ -4,7 +4,7 @@ use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use walkdir::WalkDir;
@@ -20,6 +20,10 @@ struct Args {
     /// database file path
     #[arg(short, long, default_value = "deduplifier.db")]
     database: PathBuf,
+
+    /// also list duplicate files (in addition to duplicate directories)
+    #[arg(long)]
+    files: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -52,11 +56,13 @@ fn main() -> Result<()> {
         println!(""); // New line after progress
     }
 
-    println!("\n=== Finding Duplicate Files ===");
-    find_duplicate_files(&conn)?;
-
     println!("\n=== Finding Duplicate Directories ===");
     find_duplicate_directories(&conn)?;
+
+    if args.files {
+        println!("\n=== Finding Duplicate Files ===");
+        find_duplicate_files(&conn)?;
+    }
 
     Ok(())
 }
@@ -154,6 +160,12 @@ fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<
     let mut files_by_dir: HashMap<PathBuf, Vec<FileEntry>> = HashMap::new();
     let mut processed = 0;
 
+    // Create a temp table to track all files seen in this scan
+    conn.execute_batch(
+        "CREATE TEMP TABLE IF NOT EXISTS visited_files (path TEXT PRIMARY KEY);
+         DELETE FROM visited_files;",
+    )?;
+
     // First pass: scan all files
     for entry in WalkDir::new(root).follow_links(false) {
         let entry = entry?;
@@ -174,11 +186,16 @@ fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<
             let modified = metadata.modified()?;
             let size = metadata.len();
 
+            let path_str = path.to_string_lossy().to_string();
+            conn.execute(
+                "INSERT OR IGNORE INTO visited_files (path) VALUES (?1)",
+                params![path_str],
+            )?;
+
             // Check if we need to update this file
             if should_update_file(conn, path, modified)? {
                 match compute_file_hash(path) {
                     Ok(hash) => {
-                        let path_str = path.to_string_lossy().to_string();
                         let modified_secs =
                             modified.duration_since(SystemTime::UNIX_EPOCH)?.as_secs() as i64;
 
@@ -204,7 +221,6 @@ fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<
                 }
             } else {
                 // File hasn't changed, load from database
-                let path_str = path.to_string_lossy().to_string();
                 let mut stmt = conn.prepare("SELECT hash, size FROM files WHERE path = ?1")?;
                 let (hash, size): (String, i64) =
                     stmt.query_row(params![path_str], |row| Ok((row.get(0)?, row.get(1)?)))?;
@@ -220,6 +236,36 @@ fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<
                         });
                 }
             }
+        }
+    }
+
+    // Find files in DB under root that were not seen in this scan
+    let root_str = root.to_string_lossy().to_string();
+    let stale_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM files WHERE path LIKE ?1 AND path NOT IN (SELECT path FROM visited_files)",
+        params![format!("{}%", root_str)],
+        |row| row.get(0),
+    )?;
+
+    if stale_count > 0 {
+        println!(
+            "\n{} file(s) in the database no longer exist on disk under {:?}.",
+            stale_count, root
+        );
+        print!("Delete them from the database? [y/N] ");
+        io::stdout().flush()?;
+
+        let stdin = io::stdin();
+        let mut line = String::new();
+        stdin.lock().read_line(&mut line)?;
+        if line.trim().eq_ignore_ascii_case("y") {
+            conn.execute(
+                "DELETE FROM files WHERE path LIKE ?1 AND path NOT IN (SELECT path FROM visited_files)",
+                params![format!("{}%", root_str)],
+            )?;
+            println!("Deleted {} stale file(s) from the database.", stale_count);
+        } else {
+            println!("Skipped deletion of stale entries.");
         }
     }
 
