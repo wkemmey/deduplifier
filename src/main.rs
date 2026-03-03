@@ -1,6 +1,6 @@
 mod db;
 mod duplicates;
-mod fs;
+mod hashing;
 mod scan;
 
 use anyhow::Result;
@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use db::init_database;
 use duplicates::{find_duplicate_directories, find_duplicate_files};
-use fs::count_files;
+use hashing::count_files;
 use scan::scan_directory;
 
 #[derive(Parser, Debug)]

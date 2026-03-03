@@ -6136,3 +6136,282 @@ I'd say update it rather than delete it — it's a good place for more verbose w
 
 ---
 
+_**User (2026-03-03 18:39Z)**_
+
+yes
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;markdown\n# Example Usage\n\nThis file demonstrates common usage scenarios for deduplifier.\n\n## Basic Usage\n\nScan a single directory and report duplicate directories:\n&#96;&#96;&#96;bash\ncargo run -- /path/to/directory\n&#96;&#96;&#96;\n\nOr with the release build:\n&#96;&#96;&#96;bash\n./target/release/deduplifier /path/to/directory\n&#96;&#96;&#96;\n\n## Multiple Directories\n\nScan multiple directories at once — duplicates across them will be found:\n&#96;&#96;&#96;bash\ncargo run -- /home/user/documents /home/user/downloads /mnt/backup\n&#96;&#96;&#96;\n\n## Also Report Duplicate Files\n\nBy default only duplicate directories are shown. Pass &#96;--files&#96; to also report duplicate files:\n&#96;&#96;&#96;bash\ncargo run -- --files /path/to/directory\n&#96;&#96;&#96;\n\n## Custom Database\n\nUse a custom database file location:\n&#96;&#96;&#96;bash\ncargo run -- --database /path/to/my_hashes.db /path/to/directory\n&#96;&#96;&#96;\n\n## Interactive Deletion\n\nPass &#96;--delete&#96; to interactively choose which copy of each duplicate directory to keep.\nYou will be shown a numbered list and asked to type the full path of each directory\nyou want to delete to confirm — there are no accidental deletions:\n\n&#96;&#96;&#96;\n$ cargo run -- --delete /home/user/photos /mnt/backup/photos\n\nDuplicate directories (hash: 98eb7d7eb5758bad…, count: 2, size: 524288000 bytes each):\n  [1] /home/user/photos/vacation_2023 (524288000 bytes)\n  [2] /mnt/backup/photos/vacation_2023 (524288000 bytes)\n  Keep which? (1-2, or 's' to skip): 1\n  Keeping:  /home/user/photos/vacation_2023\n  Will permanently delete:\n    - /mnt/backup/photos/vacation_2023\n  Type the directory name to confirm deletion of\n  '/mnt/backup/photos/vacation_2023'\n  &gt; /mnt/backup/photos/vacation_2023\n  Deleted '/mnt/backup/photos/vacation_2023'.\n  Removed '/mnt/backup/photos/vacation_2023' and its contents from the database.\n&#96;&#96;&#96;\n\n## Canonical Directory\n\nIf you have a known \"source of truth\" directory (e.g. a primary drive), use &#96;--canon&#96;\nto automatically keep whichever copy lives there, without being prompted for each group.\nThe canon directory is always scanned first so its hashes are in the database before\nthe others are compared against it:\n\n&#96;&#96;&#96;bash\ncargo run -- --delete --canon /home/user/photos /mnt/backup/photos\n&#96;&#96;&#96;\n\nThis will auto-select any duplicate found under &#96;/home/user/photos&#96; as the keeper and\ndelete the copy under &#96;/mnt/backup/photos&#96; after type-to-confirm.\n\n## Stale Entry Cleanup\n\nIf files have been deleted from disk since the last scan, deduplifier will detect them\nand offer to remove the stale entries from the database:\n\n&#96;&#96;&#96;\n3 file(s) in the database no longer exist on disk under \"/home/user/photos\".\nDelete them from the database? [y/N]\n&#96;&#96;&#96;\n\n## Incremental Updates\n\nThe tool tracks file modification times. Running it again on the same directory\nwithout changes is very fast because unchanged files are loaded from the database\nrather than rehashed:\n\nFirst run (all files hashed):\n&#96;&#96;&#96;bash\n$ time cargo run -- /large/directory\nFound 48301 files to process\n...\nreal    2m14s\n&#96;&#96;&#96;\n\nSecond run (no changes — hashes loaded from DB):\n&#96;&#96;&#96;bash\n$ time cargo run -- /large/directory\nFound 48301 files to process\n...\nreal    0m3.1s\n&#96;&#96;&#96;\n\n## Finding Large Duplicates\n\nResults are sorted by size largest-first, so the biggest space-saving opportunities\nappear at the top.\n\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "# Example Usage\n\nThis file demonstrates common usage scenarios for deduplifier.\n\n## Basic Usage\n\nScan a single directory and report duplicate directories:\n&#96;&#96;&#96;bash\ncargo run -- /path/to/directory\n&#96;&#96;&#96;\n\nOr with the release build:\n&#96;&#96;&#96;bash\n./target/release/deduplifier /path/to/directory\n&#96;&#96;&#96;\n\n## Multiple Directories\n\nScan multiple directories at once — duplicates across them will be found:\n&#96;&#96;&#96;bash\ncargo run -- /home/user/documents /home/user/downloads /mnt/backup\n&#96;&#96;&#96;\n\n## Also Report Duplicate Files\n\nBy default only duplicate directories are shown. Pass &#96;--files&#96; to also report duplicate files:\n&#96;&#96;&#96;bash\ncargo run -- --files /path/to/directory\n&#96;&#96;&#96;\n\n## Custom Database\n\nUse a custom database file location:\n&#96;&#96;&#96;bash\ncargo run -- --database /path/to/my_hashes.db /path/to/directory\n&#96;&#96;&#96;\n\n## Interactive Deletion\n\nPass &#96;--delete&#96; to interactively choose which copy of each duplicate directory to keep.\nYou will be shown a numbered list and asked to type the full path of each directory\nyou want to delete to confirm — there are no accidental deletions:\n\n&#96;&#96;&#96;\n$ cargo run -- --delete /home/user/photos /mnt/backup/photos\n\nDuplicate directories (hash: 98eb7d7eb5758bad…, count: 2, size: 524288000 bytes each):\n  [1] /home/user/photos/vacation_2023 (524288000 bytes)\n  [2] /mnt/backup/photos/vacation_2023 (524288000 bytes)\n  Keep which? (1-2, or 's' to skip): 1\n  Keeping:  /home/user/photos/vacation_2023\n  Will permanently delete:\n    - /mnt/backup/photos/vacation_2023\n  Type the directory name to confirm deletion of\n  '/mnt/backup/photos/vacation_2023'\n  &gt; /mnt/backup/photos/vacation_2023\n  Deleted '/mnt/backup/photos/vacation_2023'.\n  Removed '/mnt/backup/photos/vacation_2023' and its contents from the database.\n&#96;&#96;&#96;\n\n## Canonical Directory\n\nIf you have a known \"source of truth\" directory (e.g. a primary drive), use &#96;--canon&#96;\nto automatically keep whichever copy lives there, without being prompted for each group.\nThe canon directory is always scanned first so its hashes are in the database before\nthe others are compared against it:\n\n&#96;&#96;&#96;bash\ncargo run -- --delete --canon /home/user/photos /mnt/backup/photos\n&#96;&#96;&#96;\n\nThis will auto-select any duplicate found under &#96;/home/user/photos&#96; as the keeper and\ndelete the copy under &#96;/mnt/backup/photos&#96; after type-to-confirm.\n\n## Stale Entry Cleanup\n\nIf files have been deleted from disk since the last scan, deduplifier will detect them\nand offer to remove the stale entries from the database:\n\n&#96;&#96;&#96;\n3 file(s) in the database no longer exist on disk under \"/home/user/photos\".\nDelete them from the database? [y/N]\n&#96;&#96;&#96;\n\n## Incremental Updates\n\nThe tool tracks file modification times. Running it again on the same directory\nwithout changes is very fast because unchanged files are loaded from the database\nrather than rehashed:\n\nFirst run (all files hashed):\n&#96;&#96;&#96;bash\n$ time cargo run -- /large/directory\nFound 48301 files to process\n...\nreal    2m14s\n&#96;&#96;&#96;\n\nSecond run (no changes — hashes loaded from DB):\n&#96;&#96;&#96;bash\n$ time cargo run -- /large/directory\nFound 48301 files to process\n...\nreal    0m3.1s\n&#96;&#96;&#96;\n\n## Finding Large Duplicates\n\nResults are sorted by size largest-first, so the biggest space-saving opportunities\nappear at the top.\n",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Updated. The key additions:
+
+- `--files`, `--delete`, `--canon` all have their own sections with realistic example output
+- The stale cleanup prompt is shown
+- The incremental update example now has more realistic timing numbers
+- The canon section explains *why* it's scanned first
+
+---
+
+_**User (2026-03-03 18:42Z)**_
+
+don't do anything yet, let's just discuss:  the organization still feels a little off.  we have a db.rs, but there is db code scattered throughout multiple files.  i don't want to necessarily extract it all into helper functions in db.rs, but what is the right organization?  i understand that this organization facilitates testing, but there are some reasons for a semantically easy-to-understand organization to be prioritized more highly than organization for ease of testing.  what are your thoughts?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+You're touching on a real tension in software design. Let me lay out the two philosophies:
+
+**"Organize by layer" (what we have now)**
+- `db.rs` = database setup
+- `fs.rs` = filesystem operations
+- `scan.rs` = scanning logic
+- `duplicates.rs` = duplicate-finding logic
+
+This is a horizontal slice — each layer owns its technology. The problem you've noticed is that `scan.rs` and `duplicates.rs` both contain substantial SQL, so "db code" isn't really contained in `db.rs` at all.
+
+**"Organize by feature/responsibility"**
+- Each module owns everything needed to do its job — SQL included
+- `db.rs` just handles setup (schema, connection) since that genuinely has no better home
+- `scan.rs` owns the SQL for recording file/directory hashes
+- `duplicates.rs` owns the SQL for querying duplicates
+
+This is actually closer to what we already have, and I'd argue it's *more* semantically coherent, not less. `scan.rs` contains SQL because scanning *is* inseparable from writing to the DB. Pulling that SQL into `db.rs` would just mean `db.rs` becomes a grab-bag of every query in the program, and `scan.rs` becomes a skeleton that delegates everything.
+
+**My honest take:** the current organization is reasonable and the "db code scattered" observation is more of an aesthetic concern than a structural one. The one thing I'd actually question is whether `fs.rs` is the right name — it contains `compute_directory_hash` which is as much a DB operation as a filesystem one (it reads from the `directories` table). Renaming it to `hashing.rs` might make the division clearer.
+
+What's your instinct on the naming? That might be the simplest thing to address.
+
+---
+
+_**User (2026-03-03 18:45Z)**_
+
+ok, let's make the change to hashing.rs.  the rest of your argument is convincing enough; we'll keep the organization as is except for that one minor change
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="search" data-tool-name="copilot_findTextInFiles">
+<details>
+<summary>Tool use: **copilot_findTextInFiles** • Searching for text `crate::fs` (`**/src/**`)</summary>
+
+
+Searched for text `crate::fs` (`**/src/**`), 2 results
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "1aad016e-245a-4c50-9abe-2c1ff8e0de7c",
+  "terminalCommandId": "tool-887ad76a-f17d-4d18-afea-4d6e1d6bfc21",
+  "commandLine": {
+    "original": "mv /home/whit/projects/deduplifier/src/fs.rs /home/whit/projects/deduplifier/src/hashing.rs"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_multiReplaceString">
+<details>
+<summary>Tool use: **copilot_multiReplaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_multiReplaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Multi-Replace String in Files\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "\n&#96;&#96;&#96;\n\n&#96;&#96;&#96;\n\n&#96;&#96;&#96;\n\n&#96;&#96;&#96;\n&#96;&#96;&#96;rust\nuse crate::hashing::{compute_directory_hash, compute_file_hash, path_to_str};\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "use hashing::count_files;mod db;\nmod duplicates;\nmod hashing;\nmod scan;use crate::hashing::path_to_str;use crate::hashing::{compute_directory_hash, compute_file_hash, path_to_str};",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "b1805549-5258-476d-a579-2d07782f18f6",
+  "terminalCommandId": "tool-071bba64-b6cf-4642-b8f4-f245087cbb25",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+The rename touches several things: the file itself, the `mod` declaration in `main.rs`, and any `use crate::fs::` imports in other files. 22/22, all green. The test output now shows `hashing::tests::...` which reads much more clearly too. Also worth updating the Code Structure section of the README to reflect the rename — want me to do that?
+
+---
+
+_**User (2026-03-03 18:45Z)**_
+
+yes
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;markdown\n- **&#96;main.rs&#96;**: CLI argument parsing (&#96;clap&#96;) and top-level orchestration only. Also contains &#96;build_scan_list&#96;, which determines scan order (canon directory always first).\n- **&#96;db.rs&#96;**: Database setup (&#96;setup_schema&#96;, &#96;init_database&#96;) and the &#96;should_update_file&#96; query. Isolated here so tests can use an in-memory SQLite connection without touching the filesystem.\n- **&#96;hashing.rs&#96;**: Hashing operations — &#96;path_to_str&#96;, &#96;count_files&#96;, &#96;compute_file_hash&#96;, and &#96;compute_directory_hash&#96;. Named for its primary responsibility rather than the filesystem, since &#96;compute_directory_hash&#96; also reads from the &#96;directories&#96; table. These are straightforward to test with temporary directories.\n- **&#96;scan.rs&#96;**: &#96;scan_directory&#96; ties &#96;db&#96; and &#96;hashing&#96; together — it walks the directory tree, hashes new/changed files, tracks visited paths for stale detection, and triggers the bottom-up directory hash pass. Tested with temp directories and in-memory databases.\n- **&#96;duplicates.rs&#96;**: &#96;find_duplicate_files&#96; and &#96;find_duplicate_directories&#96; query the database for hash collisions and handle interactive deletion. Tested by seeding an in-memory database directly, so no filesystem scanning is needed.\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "- **&#96;main.rs&#96;**: CLI argument parsing (&#96;clap&#96;) and top-level orchestration only. Also contains &#96;build_scan_list&#96;, which determines scan order (canon directory always first).\n- **&#96;db.rs&#96;**: Database setup (&#96;setup_schema&#96;, &#96;init_database&#96;) and the &#96;should_update_file&#96; query. Isolated here so tests can use an in-memory SQLite connection without touching the filesystem.\n- **&#96;hashing.rs&#96;**: Hashing operations — &#96;path_to_str&#96;, &#96;count_files&#96;, &#96;compute_file_hash&#96;, and &#96;compute_directory_hash&#96;. Named for its primary responsibility rather than the filesystem, since &#96;compute_directory_hash&#96; also reads from the &#96;directories&#96; table. These are straightforward to test with temporary directories.\n- **&#96;scan.rs&#96;**: &#96;scan_directory&#96; ties &#96;db&#96; and &#96;hashing&#96; together — it walks the directory tree, hashes new/changed files, tracks visited paths for stale detection, and triggers the bottom-up directory hash pass. Tested with temp directories and in-memory databases.\n- **&#96;duplicates.rs&#96;**: &#96;find_duplicate_files&#96; and &#96;find_duplicate_directories&#96; query the database for hash collisions and handle interactive deletion. Tested by seeding an in-memory database directly, so no filesystem scanning is needed.",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Done — `fs.rs` is now `hashing.rs` everywhere, including the explanation of why it's named that way.
+
+---
+

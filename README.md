@@ -85,8 +85,8 @@ The codebase is split into modules primarily to keep each piece independently te
 
 - **`main.rs`**: CLI argument parsing (`clap`) and top-level orchestration only. Also contains `build_scan_list`, which determines scan order (canon directory always first).
 - **`db.rs`**: Database setup (`setup_schema`, `init_database`) and the `should_update_file` query. Isolated here so tests can use an in-memory SQLite connection without touching the filesystem.
-- **`fs.rs`**: Pure filesystem operations — `path_to_str`, `count_files`, `compute_file_hash`, and `compute_directory_hash`. These are straightforward to test with temporary directories and make no database calls.
-- **`scan.rs`**: `scan_directory` ties `db` and `fs` together — it walks the directory tree, hashes new/changed files, tracks visited paths for stale detection, and triggers the bottom-up directory hash pass. Tested with temp directories and in-memory databases.
+- **`hashing.rs`**: Hashing operations — `path_to_str`, `count_files`, `compute_file_hash`, and `compute_directory_hash`. Named for its primary responsibility rather than the filesystem, since `compute_directory_hash` also reads from the `directories` table. These are straightforward to test with temporary directories.
+- **`scan.rs`**: `scan_directory` ties `db` and `hashing` together — it walks the directory tree, hashes new/changed files, tracks visited paths for stale detection, and triggers the bottom-up directory hash pass. Tested with temp directories and in-memory databases.
 - **`duplicates.rs`**: `find_duplicate_files` and `find_duplicate_directories` query the database for hash collisions and handle interactive deletion. Tested by seeding an in-memory database directly, so no filesystem scanning is needed.
 
 ## Database Schema
