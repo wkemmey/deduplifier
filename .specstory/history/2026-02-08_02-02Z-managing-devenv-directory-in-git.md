@@ -3460,3 +3460,417 @@ This formats the code before the hook runs, so the hook sees already-formatted c
 
 ---
 
+_**User (2026-03-03 01:39Z)**_
+
+when calculating a directory hash, can you confirm we are considering subdirectories and not just files in the directory?  so a directory's hash should include the hashes of files in the directory, but also hashes of subdirectories.  is it already working that way, or do we need to modify it?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#265-265), lines 265 to 320</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#265-265), lines 265 to 320
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#320-320), lines 320 to 360</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#320-320), lines 320 to 360
+
+</details>
+</tool-use>
+
+---
+
+Let me read the `compute_directory_hash` function to confirm: Yes, it's already working correctly. Here's how:
+
+**Files:** Included via `files_by_dir.get(dir_path)` — all direct child files with their filenames and hashes.
+
+**Subdirectories:** Included via the SQL query for `directories` where `path LIKE '/parent/%' AND path NOT LIKE '/parent/%/%'` — this fetches only immediate child directories (already stored in the DB from the bottom-up pass). Each child directory contributes its own name and hash (which itself already incorporates all its contents recursively).
+
+**The bottom-up ordering** (deepest directories first, line 282-283) is key — it ensures that by the time a parent directory is hashed, all its child directory hashes are already in the database.
+
+So the hash is correct and fully recursive.
+
+---
+
+_**User (2026-03-03 01:45Z)**_
+
+when finding duplicate directories, can i list the largest directories first?  i think that ordering in terms of size would be most useful, but listing in terms of number of files and subdirectories (recursively) might be fine if it's easier.  or i guess an alternate approach would be to not include directories in the duplicate listing if we have already listed the parent directory as a duplicate--although this could in some cases require multiple passes to get all duplicates, such as when we have a/b/c d/b/c x/y/c.  what do you recommend?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#370-370), lines 370 to 430</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#370-370), lines 370 to 430
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#430-430), lines 430 to 454</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#430-430), lines 430 to 454
+
+</details>
+</tool-use>
+
+---
+
+Let me read the current `find_duplicate_directories` function: Good news: **sorting by size is already done** — `ORDER BY max_size DESC` is already in the query, so the largest duplicate groups appear first.
+
+**On the "suppress subdirectory duplicates" approach:**
+
+I'd recommend against it. Here's why:
+
+- Your example `a/b/c`, `d/b/c`, `x/y/c` shows the problem — suppressing children is ambiguous when there's no single dominant parent
+- It makes the output non-deterministic (depends on what order you suppress)
+- Users lose information — they can't tell if the duplicate is contained in a larger duplicate or is standalone
+
+**My recommendation: keep the current approach but improve the output** to make the parent/child relationship obvious. Specifically:
+
+- Already sorted by size (largest first), so parent duplicates naturally appear before their child duplicates
+- Add a note like `(subdirectory of a listed duplicate)` when a listed duplicate path is a child of an already-listed duplicate hash
+
+This gives you the best of both worlds: full information + visual clarity about nesting. Want me to implement that annotation?
+
+---
+
+_**User (2026-03-03 01:57Z)**_
+
+no, it's not necessary.  my intention is to use this to clean up duplicate directories, so after i clean up the largest, the smallest will go away if they no longer matter.  to assist with this, i would like to make the following changes (but tell me if you have a better recommendation):  one, add an option to delete files that requires asking permission. let's call it --delete.  two, if that option is present, list the duplicates one set at a time (could be more than two duplicates in a set), number them, and ask me which one to keep.  three, let's add an option to specify a directory as the main one we are merging all others into, and always choose to keep the duplicate that falls under that directory, but still confirm the deletion operation.  fourth, if we delete files or directories, the program should remove appropriate entries from the database without waiting for the next hashing scan.  fifth, once we have performed or canceled the deletion, we should see the next set of largest duplicates.  for all of these, take care that we don't delete a file accidentally.  what do you think of this approach?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+This is a solid approach. A few thoughts and recommendations before implementing:
+
+**On your plan — mostly good, a few suggestions:**
+
+1. **`--delete` flag** ✓ Good. I'd also suggest a `--dry-run` mode that shows what *would* be deleted without doing it.
+
+2. **Number duplicates and ask which to keep** ✓ Good. I'd recommend asking "keep which? (1-N, or 's' to skip)" so you can skip a set you're not ready to deal with yet.
+
+3. **`--prefer-dir` option** ✓ Good idea. I'd rename it `--canonical` or `--prefer` since "main" and "merging" implies file copying, which we're not doing. So: `--prefer /path/to/main`. If the preferred dir contains one of the duplicates, auto-select it but still confirm before deleting.
+
+4. **Remove DB entries after deletion** ✓ Essential, agreed.
+
+5. **Continue to next set after each decision** ✓ Good UX.
+
+**One important safety consideration:**
+
+For directories, **don't delete the directory itself** — instead, delete its *contents* recursively. Actually, I'd recommend **only deleting whole directories** via `std::fs::remove_dir_all`, but showing a clear warning like:
+> "This will permanently delete `/path/to/dir` and all its contents (42 files, 1.2 GB). Type the directory name to confirm:"
+
+Requiring the user to type the path (not just `y`) adds a strong safety check.
+
+**Shall I proceed with this plan?**
+- `--delete` flag
+- `--prefer <path>` flag  
+- Per-set prompting with skip option
+- Type-to-confirm safety check for directory deletion
+- DB cleanup after deletion
+
+---
+
+_**User (2026-03-03 02:03Z)**_
+
+yes.  let's use the option --canon for the preferred/main/canonical directory
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="task" data-tool-name="manage_todo_list">
+<details>
+<summary>Tool use: **manage_todo_list** • Using "Manage and track todo items for task planning"</summary>
+
+**Added 1 todo**
+
+- [ ] Add CLI flags
+  > Add --delete and --canon flags to Args struct
+- [ ] Implement interactive deletion
+  > Refactor find_duplicate_directories to handle interactive deletion, --canon auto-select, type-to-confirm safety, DB cleanup, and per-set looping
+- [ ] Verify compilation
+  > Run cargo check to verify compilation
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#1-1), lines 1 to 75</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#1-1), lines 1 to 75
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="task" data-tool-name="manage_todo_list">
+<details>
+<summary>Tool use: **manage_todo_list** • Using "Manage and track todo items for task planning"</summary>
+
+**Starting: *Add CLI flags* (1/3)**
+
+- [-] Add CLI flags
+  > Add --delete and --canon flags to Args struct
+- [ ] Implement interactive deletion
+  > Refactor find_duplicate_directories to handle interactive deletion, --canon auto-select, type-to-confirm safety, DB cleanup, and per-set looping
+- [ ] Verify compilation
+  > Run cargo check to verify compilation
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_multiReplaceString">
+<details>
+<summary>Tool use: **copilot_multiReplaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_multiReplaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Multi-Replace String in Files\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    println!(\"\\n=== Finding Duplicate Directories ===\");\n    find_duplicate_directories(&amp;conn, args.delete, args.canon.as_deref())?;\n    /// also list duplicate files (in addition to duplicate directories)\n    #[arg(long)]\n    files: bool,\n\n    /// interactively delete duplicate directories\n    #[arg(long)]\n    delete: bool,\n\n    /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep\n    #[arg(long)]\n    canon: Option&lt;PathBuf&gt;,\n}\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    println!(\"\\n=== Finding Duplicate Directories ===\");\n    find_duplicate_directories(&amp;conn, args.delete, args.canon.as_deref())?;    /// also list duplicate files (in addition to duplicate directories)\n    #[arg(long)]\n    files: bool,\n\n    /// interactively delete duplicate directories\n    #[arg(long)]\n    delete: bool,\n\n    /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep\n    #[arg(long)]\n    canon: Option&lt;PathBuf&gt;,\n}",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="task" data-tool-name="manage_todo_list">
+<details>
+<summary>Tool use: **manage_todo_list** • Using "Manage and track todo items for task planning"</summary>
+
+**Starting: *Implement interactive deletion* (2/3)**
+
+- [x] Add CLI flags
+  > Add --delete and --canon flags to Args struct
+- [-] Implement interactive deletion
+  > Refactor find_duplicate_directories to handle interactive deletion, --canon auto-select, type-to-confirm safety, DB cleanup, and per-set looping
+- [ ] Verify compilation
+  > Run cargo check to verify compilation
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#408-408), lines 408 to 462</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#408-408), lines 408 to 462
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\nfn find_duplicate_directories(\n    conn: &amp;Connection,\n    delete: bool,\n    canon: Option&lt;&amp;Path&gt;,\n) -&gt; Result&lt;()&gt; {\n    // Collect all duplicate groups upfront so we can iterate interactively\n    let mut stmt = conn.prepare(\n        \"SELECT hash, COUNT(*) as count, MAX(size) as max_size\n         FROM directories\n         WHERE hash != 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'\n         GROUP BY hash\n         HAVING count &gt; 1\n         ORDER BY max_size DESC\",\n    )?;\n\n    let duplicate_groups: Vec&lt;(String, i64, i64)&gt; = stmt\n        .query_map([], |row| {\n            Ok((\n                row.get::&lt;_, String&gt;(0)?,\n                row.get::&lt;_, i64&gt;(1)?,\n                row.get::&lt;_, i64&gt;(2)?,\n            ))\n        })?\n        .collect::&lt;rusqlite::Result&lt;_&gt;&gt;()?;\n\n    if duplicate_groups.is_empty() {\n        println!(\"No duplicate directories found.\");\n        return Ok(());\n    }\n\n    let stdin = io::stdin();\n\n    for (hash, count, max_size) in &amp;duplicate_groups {\n        // Fetch the directories in this group\n        let mut dir_stmt =\n            conn.prepare(\"SELECT path, size FROM directories WHERE hash = ?1 ORDER BY path\")?;\n        let dirs: Vec&lt;(String, i64)&gt; = dir_stmt\n            .query_map(params![hash], |row| {\n                Ok((row.get::&lt;_, String&gt;(0)?, row.get::&lt;_, i64&gt;(1)?))\n            })?\n            .collect::&lt;rusqlite::Result&lt;_&gt;&gt;()?;\n\n        let hash_display = if hash.len() &gt;= 16 {\n            &amp;hash[..16]\n        } else {\n            hash\n        };\n        println!(\n            \"\\nDuplicate directories (hash: {}…, count: {}, size: {} bytes each):\",\n            hash_display, count, max_size\n        );\n\n        for (i, (path, size)) in dirs.iter().enumerate() {\n            println!(\"  [{}] {} ({} bytes)\", i + 1, path, size);\n        }\n\n        if !delete {\n            continue;\n        }\n\n        // Determine if --canon auto-selects a keeper\n        let auto_keep: Option&lt;usize&gt; = if let Some(canon_path) = canon {\n            dirs.iter().position(|(p, _)| {\n                Path::new(p).starts_with(canon_path)\n            })\n        } else {\n            None\n        };\n\n        let keep_idx: usize = if let Some(idx) = auto_keep {\n            println!(\n                \"  Auto-selecting [{}] as canonical: {}\",\n                idx + 1,\n                dirs[idx].0\n            );\n            idx\n        } else {\n            print!(\n                \"  Keep which? (1-{}, or 's' to skip): \",\n                dirs.len()\n            );\n            io::stdout().flush()?;\n            let mut line = String::new();\n            stdin.lock().read_line(&amp;mut line)?;\n            let trimmed = line.trim();\n            if trimmed.eq_ignore_ascii_case(\"s\") {\n                println!(\"  Skipped.\");\n                continue;\n            }\n            match trimmed.parse::&lt;usize&gt;() {\n                Ok(n) if n &gt;= 1 &amp;&amp; n &lt;= dirs.len() =&gt; n - 1,\n                _ =&gt; {\n                    println!(\"  Invalid choice, skipping.\");\n                    continue;\n                }\n            }\n        };\n\n        // List what will be deleted and ask for type-to-confirm\n        let to_delete: Vec&lt;&amp;str&gt; = dirs\n            .iter()\n            .enumerate()\n            .filter(|(i, _)| *i != keep_idx)\n            .map(|(_, (p, _))| p.as_str())\n            .collect();\n\n        println!(\"  Keeping:  {}\", dirs[keep_idx].0);\n        println!(\"  Will permanently delete:\");\n        for path in &amp;to_delete {\n            println!(\"    - {}\", path);\n        }\n\n        for path in &amp;to_delete {\n            print!(\n                \"  Type the directory name to confirm deletion of\\n  '{}'\\n  &gt; \",\n                path\n            );\n            io::stdout().flush()?;\n            let mut confirmation = String::new();\n            stdin.lock().read_line(&amp;mut confirmation)?;\n            if confirmation.trim() != *path {\n                println!(\"  Name did not match — skipping deletion of '{}'.\", path);\n                continue;\n            }\n\n            // Delete the directory from disk\n            let dir_path = Path::new(path);\n            if dir_path.exists() {\n                fs::remove_dir_all(dir_path)?;\n                println!(\"  Deleted '{}'.\", path);\n            } else {\n                println!(\"  '{}' no longer exists on disk, skipping.\", path);\n            }\n\n            // Remove from database: the directory itself and all files/subdirs under it\n            let prefix = format!(\"{}%\", path);\n            conn.execute(\n                \"DELETE FROM files WHERE path LIKE ?1\",\n                params![prefix],\n            )?;\n            conn.execute(\n                \"DELETE FROM directories WHERE path LIKE ?1\",\n                params![prefix],\n            )?;\n            println!(\"  Removed '{}' and its contents from the database.\", path);\n        }\n    }\n\n    Ok(())\n}\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "fn find_duplicate_directories(\n    conn: &amp;Connection,\n    delete: bool,\n    canon: Option&lt;&amp;Path&gt;,\n) -&gt; Result&lt;()&gt; {\n    // Collect all duplicate groups upfront so we can iterate interactively\n    let mut stmt = conn.prepare(\n        \"SELECT hash, COUNT(*) as count, MAX(size) as max_size\n         FROM directories\n         WHERE hash != 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'\n         GROUP BY hash\n         HAVING count &gt; 1\n         ORDER BY max_size DESC\",\n    )?;\n\n    let duplicate_groups: Vec&lt;(String, i64, i64)&gt; = stmt\n        .query_map([], |row| {\n            Ok((\n                row.get::&lt;_, String&gt;(0)?,\n                row.get::&lt;_, i64&gt;(1)?,\n                row.get::&lt;_, i64&gt;(2)?,\n            ))\n        })?\n        .collect::&lt;rusqlite::Result&lt;_&gt;&gt;()?;\n\n    if duplicate_groups.is_empty() {\n        println!(\"No duplicate directories found.\");\n        return Ok(());\n    }\n\n    let stdin = io::stdin();\n\n    for (hash, count, max_size) in &amp;duplicate_groups {\n        // Fetch the directories in this group\n        let mut dir_stmt =\n            conn.prepare(\"SELECT path, size FROM directories WHERE hash = ?1 ORDER BY path\")?;\n        let dirs: Vec&lt;(String, i64)&gt; = dir_stmt\n            .query_map(params![hash], |row| {\n                Ok((row.get::&lt;_, String&gt;(0)?, row.get::&lt;_, i64&gt;(1)?))\n            })?\n            .collect::&lt;rusqlite::Result&lt;_&gt;&gt;()?;\n\n        let hash_display = if hash.len() &gt;= 16 {\n            &amp;hash[..16]\n        } else {\n            hash\n        };\n        println!(\n            \"\\nDuplicate directories (hash: {}…, count: {}, size: {} bytes each):\",\n            hash_display, count, max_size\n        );\n\n        for (i, (path, size)) in dirs.iter().enumerate() {\n            println!(\"  [{}] {} ({} bytes)\", i + 1, path, size);\n        }\n\n        if !delete {\n            continue;\n        }\n\n        // Determine if --canon auto-selects a keeper\n        let auto_keep: Option&lt;usize&gt; = if let Some(canon_path) = canon {\n            dirs.iter().position(|(p, _)| {\n                Path::new(p).starts_with(canon_path)\n            })\n        } else {\n            None\n        };\n\n        let keep_idx: usize = if let Some(idx) = auto_keep {\n            println!(\n                \"  Auto-selecting [{}] as canonical: {}\",\n                idx + 1,\n                dirs[idx].0\n            );\n            idx\n        } else {\n            print!(\n                \"  Keep which? (1-{}, or 's' to skip): \",\n                dirs.len()\n            );\n            io::stdout().flush()?;\n            let mut line = String::new();\n            stdin.lock().read_line(&amp;mut line)?;\n            let trimmed = line.trim();\n            if trimmed.eq_ignore_ascii_case(\"s\") {\n                println!(\"  Skipped.\");\n                continue;\n            }\n            match trimmed.parse::&lt;usize&gt;() {\n                Ok(n) if n &gt;= 1 &amp;&amp; n &lt;= dirs.len() =&gt; n - 1,\n                _ =&gt; {\n                    println!(\"  Invalid choice, skipping.\");\n                    continue;\n                }\n            }\n        };\n\n        // List what will be deleted and ask for type-to-confirm\n        let to_delete: Vec&lt;&amp;str&gt; = dirs\n            .iter()\n            .enumerate()\n            .filter(|(i, _)| *i != keep_idx)\n            .map(|(_, (p, _))| p.as_str())\n            .collect();\n\n        println!(\"  Keeping:  {}\", dirs[keep_idx].0);\n        println!(\"  Will permanently delete:\");\n        for path in &amp;to_delete {\n            println!(\"    - {}\", path);\n        }\n\n        for path in &amp;to_delete {\n            print!(\n                \"  Type the directory name to confirm deletion of\\n  '{}'\\n  &gt; \",\n                path\n            );\n            io::stdout().flush()?;\n            let mut confirmation = String::new();\n            stdin.lock().read_line(&amp;mut confirmation)?;\n            if confirmation.trim() != *path {\n                println!(\"  Name did not match — skipping deletion of '{}'.\", path);\n                continue;\n            }\n\n            // Delete the directory from disk\n            let dir_path = Path::new(path);\n            if dir_path.exists() {\n                fs::remove_dir_all(dir_path)?;\n                println!(\"  Deleted '{}'.\", path);\n            } else {\n                println!(\"  '{}' no longer exists on disk, skipping.\", path);\n            }\n\n            // Remove from database: the directory itself and all files/subdirs under it\n            let prefix = format!(\"{}%\", path);\n            conn.execute(\n                \"DELETE FROM files WHERE path LIKE ?1\",\n                params![prefix],\n            )?;\n            conn.execute(\n                \"DELETE FROM directories WHERE path LIKE ?1\",\n                params![prefix],\n            )?;\n            println!(\"  Removed '{}' and its contents from the database.\", path);\n        }\n    }\n\n    Ok(())\n}",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "deb163e2-5401-4aef-bbb7-dea34db61a87",
+  "terminalCommandId": "tool-9f559e0e-e0a6-4788-a67a-b8d54fe55855",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo check 2&gt;&amp;1",
+    "toolEdited": "cargo check 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="task" data-tool-name="manage_todo_list">
+<details>
+<summary>Tool use: **manage_todo_list** • Using "Manage and track todo items for task planning"</summary>
+
+**Completed: *Implement interactive deletion* (2/3)**
+
+- [x] Add CLI flags
+  > Add --delete and --canon flags to Args struct
+- [x] Implement interactive deletion
+  > Refactor find_duplicate_directories to handle interactive deletion, --canon auto-select, type-to-confirm safety, DB cleanup, and per-set looping
+- [x] Verify compilation
+  > Run cargo check to verify compilation
+
+</details>
+</tool-use>
+
+---
+
+Now let's replace `find_duplicate_directories`: Compiles cleanly. Here's a summary of the behavior:
+
+**Without `--delete`:** Lists all duplicate directory groups (largest first), no prompts.
+
+**With `--delete`:** For each group:
+1. Shows numbered list of duplicate directories
+2. If `--canon` matches one, auto-selects it as keeper
+3. Otherwise asks: `Keep which? (1-N, or 's' to skip)`
+4. For each directory to delete, shows what will be deleted and requires you to **type the full path** to confirm
+5. Deletes the directory from disk with `remove_dir_all`
+6. Removes the directory and all its files/subdirs from the database immediately
+7. Proceeds to the next duplicate group
+
+**Example usage:**
+```bash
+# List duplicates only
+deduplifier /data
+
+# Interactive deletion
+deduplifier --delete /data
+
+# Auto-keep anything under /data/canonical
+deduplifier --delete --canon /data/canonical /data
+```
+
+---
+
+_**User (2026-03-03 02:19Z)**_
+
+why the change to line 424?  it looks like you only changed whitespace
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+You're right, that was just `rustfmt` normalizing the whitespace in the SQL string — no semantic change. The query logic is identical.
+
+---
+
+_**User (2026-03-03 02:21Z)**_
+
+what method did we choose to order directories?  space, depth, number of contents?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+We order by `MAX(size) DESC` — total size in bytes. So the largest directories (by disk space) appear first. This is already in the SQL query in `find_duplicate_directories`.
+
+---
+
+_**User (2026-03-03 02:21Z)**_
+
+ok perfect
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Sounds good! Let me know when you're ready to tackle the next item from your TODO list or continue testing.
+
+---
+

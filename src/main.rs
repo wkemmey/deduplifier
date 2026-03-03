@@ -24,6 +24,14 @@ struct Args {
     /// also list duplicate files (in addition to duplicate directories)
     #[arg(long)]
     files: bool,
+
+    /// interactively delete duplicate directories
+    #[arg(long)]
+    delete: bool,
+
+    /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep
+    #[arg(long)]
+    canon: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,7 +65,7 @@ fn main() -> Result<()> {
     }
 
     println!("\n=== Finding Duplicate Directories ===");
-    find_duplicate_directories(&conn)?;
+    find_duplicate_directories(&conn, args.delete, args.canon.as_deref())?;
 
     if args.files {
         println!("\n=== Finding Duplicate Files ===");
@@ -406,47 +414,137 @@ fn find_duplicate_files(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-fn find_duplicate_directories(conn: &Connection) -> Result<()> {
+fn find_duplicate_directories(conn: &Connection, delete: bool, canon: Option<&Path>) -> Result<()> {
+    // Collect all duplicate groups upfront so we can iterate interactively
     let mut stmt = conn.prepare(
-        "SELECT hash, COUNT(*) as count, MAX(size) as max_size 
-         FROM directories 
+        "SELECT hash, COUNT(*) as count, MAX(size) as max_size
+         FROM directories
          WHERE hash != 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-         GROUP BY hash 
+         GROUP BY hash
          HAVING count > 1
          ORDER BY max_size DESC",
     )?;
 
-    let duplicates = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, i64>(1)?,
-            row.get::<_, i64>(2)?,
-        ))
-    })?;
+    let duplicate_groups: Vec<(String, i64, i64)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
 
-    let mut found_any = false;
-    for dup in duplicates {
-        let (hash, count, max_size) = dup?;
-        found_any = true;
-        let hash_display = if hash.len() >= 16 { &hash[..16] } else { &hash };
+    if duplicate_groups.is_empty() {
+        println!("No duplicate directories found.");
+        return Ok(());
+    }
+
+    let stdin = io::stdin();
+
+    for (hash, count, max_size) in &duplicate_groups {
+        // Fetch the directories in this group
+        let mut dir_stmt =
+            conn.prepare("SELECT path, size FROM directories WHERE hash = ?1 ORDER BY path")?;
+        let dirs: Vec<(String, i64)> = dir_stmt
+            .query_map(params![hash], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+
+        let hash_display = if hash.len() >= 16 { &hash[..16] } else { hash };
         println!(
-            "\nDuplicate directories (hash: {}, count: {}, size: {} bytes):",
+            "\nDuplicate directories (hash: {}…, count: {}, size: {} bytes each):",
             hash_display, count, max_size
         );
 
-        let mut dir_stmt = conn.prepare("SELECT path, size FROM directories WHERE hash = ?1")?;
-        let dirs = dir_stmt.query_map(params![hash], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })?;
-
-        for dir in dirs {
-            let (path, size) = dir?;
-            println!("  - {} ({} bytes)", path, size);
+        for (i, (path, size)) in dirs.iter().enumerate() {
+            println!("  [{}] {} ({} bytes)", i + 1, path, size);
         }
-    }
 
-    if !found_any {
-        println!("No duplicate directories found.");
+        if !delete {
+            continue;
+        }
+
+        // Determine if --canon auto-selects a keeper
+        let auto_keep: Option<usize> = if let Some(canon_path) = canon {
+            dirs.iter()
+                .position(|(p, _)| Path::new(p).starts_with(canon_path))
+        } else {
+            None
+        };
+
+        let keep_idx: usize = if let Some(idx) = auto_keep {
+            println!(
+                "  Auto-selecting [{}] as canonical: {}",
+                idx + 1,
+                dirs[idx].0
+            );
+            idx
+        } else {
+            print!("  Keep which? (1-{}, or 's' to skip): ", dirs.len());
+            io::stdout().flush()?;
+            let mut line = String::new();
+            stdin.lock().read_line(&mut line)?;
+            let trimmed = line.trim();
+            if trimmed.eq_ignore_ascii_case("s") {
+                println!("  Skipped.");
+                continue;
+            }
+            match trimmed.parse::<usize>() {
+                Ok(n) if n >= 1 && n <= dirs.len() => n - 1,
+                _ => {
+                    println!("  Invalid choice, skipping.");
+                    continue;
+                }
+            }
+        };
+
+        // List what will be deleted and ask for type-to-confirm
+        let to_delete: Vec<&str> = dirs
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != keep_idx)
+            .map(|(_, (p, _))| p.as_str())
+            .collect();
+
+        println!("  Keeping:  {}", dirs[keep_idx].0);
+        println!("  Will permanently delete:");
+        for path in &to_delete {
+            println!("    - {}", path);
+        }
+
+        for path in &to_delete {
+            print!(
+                "  Type the directory name to confirm deletion of\n  '{}'\n  > ",
+                path
+            );
+            io::stdout().flush()?;
+            let mut confirmation = String::new();
+            stdin.lock().read_line(&mut confirmation)?;
+            if confirmation.trim() != *path {
+                println!("  Name did not match — skipping deletion of '{}'.", path);
+                continue;
+            }
+
+            // Delete the directory from disk
+            let dir_path = Path::new(path);
+            if dir_path.exists() {
+                fs::remove_dir_all(dir_path)?;
+                println!("  Deleted '{}'.", path);
+            } else {
+                println!("  '{}' no longer exists on disk, skipping.", path);
+            }
+
+            // Remove from database: the directory itself and all files/subdirs under it
+            let prefix = format!("{}%", path);
+            conn.execute("DELETE FROM files WHERE path LIKE ?1", params![prefix])?;
+            conn.execute(
+                "DELETE FROM directories WHERE path LIKE ?1",
+                params![prefix],
+            )?;
+            println!("  Removed '{}' and its contents from the database.", path);
+        }
     }
 
     Ok(())
