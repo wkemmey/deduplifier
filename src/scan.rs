@@ -16,7 +16,12 @@ pub struct FileEntry {
     pub size: u64,
 }
 
-pub fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Result<usize> {
+pub fn scan_directory(
+    conn: &Connection,
+    root: &Path,
+    total_files: usize,
+    prompt_stale: bool,
+) -> Result<usize> {
     let mut files_by_dir: HashMap<PathBuf, Vec<FileEntry>> = HashMap::new();
     let mut processed = 0;
     let mut invalid_paths = 0usize;
@@ -120,19 +125,25 @@ pub fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Res
             "\n{} file(s) in the database no longer exist on disk under {:?}.",
             stale_count, root
         );
-        print!("Delete them from the database? [y/N] ");
-        io::stdout().flush()?;
 
-        let stdin = io::stdin();
-        let mut line = String::new();
-        stdin.lock().read_line(&mut line)?;
-        if line.trim().eq_ignore_ascii_case("y") {
+        let should_delete = if prompt_stale {
+            print!("Delete them from the database? [y/N] ");
+            io::stdout().flush()?;
+            let stdin = io::stdin();
+            let mut line = String::new();
+            stdin.lock().read_line(&mut line)?;
+            line.trim().eq_ignore_ascii_case("y")
+        } else {
+            false
+        };
+
+        if should_delete {
             conn.execute(
                 "DELETE FROM files WHERE path LIKE ?1 AND path NOT IN (SELECT path FROM visited_files)",
                 params![format!("{}%", root_str)],
             )?;
             println!("Deleted {} stale file(s) from the database.", stale_count);
-        } else {
+        } else if prompt_stale {
             println!("Skipped deletion of stale entries.");
         }
     }
@@ -154,4 +165,126 @@ pub fn scan_directory(conn: &Connection, root: &Path, total_files: usize) -> Res
     }
 
     Ok(invalid_paths)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn open_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE files (
+                path TEXT PRIMARY KEY,
+                hash TEXT NOT NULL,
+                size INTEGER NOT NULL,
+                modified INTEGER NOT NULL
+            );
+            CREATE TABLE directories (
+                path TEXT PRIMARY KEY,
+                hash TEXT NOT NULL,
+                size INTEGER NOT NULL
+            );
+            CREATE INDEX idx_file_hash ON files(hash);
+            CREATE INDEX idx_dir_hash ON directories(hash);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_scan_new_files_are_hashed() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "hello").unwrap();
+        fs::write(dir.path().join("b.txt"), "world").unwrap();
+
+        let conn = open_test_db();
+        let invalid = scan_directory(&conn, dir.path(), 2, false).unwrap();
+        assert_eq!(invalid, 0);
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_scan_directory_hash_stored() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "hello").unwrap();
+
+        let conn = open_test_db();
+        scan_directory(&conn, dir.path(), 1, false).unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM directories", [], |r| r.get(0))
+            .unwrap();
+        assert!(count >= 1);
+    }
+
+    #[test]
+    fn test_scan_identical_dirs_get_same_hash() {
+        // Two directories with identical contents should produce the same directory hash
+        let root = tempdir().unwrap();
+        let dir_a = root.path().join("a");
+        let dir_b = root.path().join("b");
+        fs::create_dir(&dir_a).unwrap();
+        fs::create_dir(&dir_b).unwrap();
+        fs::write(dir_a.join("file.txt"), "same content").unwrap();
+        fs::write(dir_b.join("file.txt"), "same content").unwrap();
+
+        let conn = open_test_db();
+        scan_directory(&conn, root.path(), 2, false).unwrap();
+
+        let hash_a: String = conn
+            .query_row(
+                "SELECT hash FROM directories WHERE path = ?1",
+                rusqlite::params![dir_a.to_str().unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let hash_b: String = conn
+            .query_row(
+                "SELECT hash FROM directories WHERE path = ?1",
+                rusqlite::params![dir_b.to_str().unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(hash_a, hash_b);
+    }
+
+    #[test]
+    fn test_scan_different_dirs_get_different_hash() {
+        let root = tempdir().unwrap();
+        let dir_a = root.path().join("a");
+        let dir_b = root.path().join("b");
+        fs::create_dir(&dir_a).unwrap();
+        fs::create_dir(&dir_b).unwrap();
+        fs::write(dir_a.join("file.txt"), "content A").unwrap();
+        fs::write(dir_b.join("file.txt"), "content B").unwrap();
+
+        let conn = open_test_db();
+        scan_directory(&conn, root.path(), 2, false).unwrap();
+
+        let hash_a: String = conn
+            .query_row(
+                "SELECT hash FROM directories WHERE path = ?1",
+                rusqlite::params![dir_a.to_str().unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let hash_b: String = conn
+            .query_row(
+                "SELECT hash FROM directories WHERE path = ?1",
+                rusqlite::params![dir_b.to_str().unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        assert_ne!(hash_a, hash_b);
+    }
 }

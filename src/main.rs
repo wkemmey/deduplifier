@@ -57,7 +57,7 @@ fn main() -> Result<()> {
         println!("Found {} files to process", total_files);
 
         println!("Scanning directory: {:?}", directory);
-        let invalid = scan_directory(&conn, directory, total_files)?;
+        let invalid = scan_directory(&conn, directory, total_files, true)?;
         total_invalid_paths += invalid;
         println!(""); // New line after progress
     }

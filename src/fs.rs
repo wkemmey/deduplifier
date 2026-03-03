@@ -120,3 +120,76 @@ pub fn compute_directory_hash(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_path_to_str_valid() {
+        let path = std::path::Path::new("/some/valid/path.txt");
+        assert_eq!(path_to_str(path).unwrap(), "/some/valid/path.txt");
+    }
+
+    #[test]
+    fn test_count_files_empty_dir() {
+        let dir = tempdir().unwrap();
+        assert_eq!(count_files(dir.path()).unwrap(), 0);
+    }
+
+    #[test]
+    fn test_count_files_with_files() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "hello").unwrap();
+        fs::write(dir.path().join("b.txt"), "world").unwrap();
+        assert_eq!(count_files(dir.path()).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_count_files_nested() {
+        let dir = tempdir().unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        fs::write(dir.path().join("a.txt"), "hello").unwrap();
+        fs::write(sub.join("b.txt"), "world").unwrap();
+        assert_eq!(count_files(dir.path()).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_compute_file_hash_deterministic() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("test.txt");
+        fs::write(&file, "hello world").unwrap();
+        let hash1 = compute_file_hash(&file).unwrap();
+        let hash2 = compute_file_hash(&file).unwrap();
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_compute_file_hash_different_contents() {
+        let dir = tempdir().unwrap();
+        let f1 = dir.path().join("a.txt");
+        let f2 = dir.path().join("b.txt");
+        fs::write(&f1, "hello").unwrap();
+        fs::write(&f2, "world").unwrap();
+        assert_ne!(
+            compute_file_hash(&f1).unwrap(),
+            compute_file_hash(&f2).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_compute_file_hash_same_contents() {
+        let dir = tempdir().unwrap();
+        let f1 = dir.path().join("a.txt");
+        let f2 = dir.path().join("b.txt");
+        fs::write(&f1, "same content").unwrap();
+        fs::write(&f2, "same content").unwrap();
+        assert_eq!(
+            compute_file_hash(&f1).unwrap(),
+            compute_file_hash(&f2).unwrap()
+        );
+    }
+}

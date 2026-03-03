@@ -188,3 +188,70 @@ pub fn find_duplicate_directories(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn open_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE files (
+                path TEXT PRIMARY KEY,
+                hash TEXT NOT NULL,
+                size INTEGER NOT NULL,
+                modified INTEGER NOT NULL
+            );
+            CREATE TABLE directories (
+                path TEXT PRIMARY KEY,
+                hash TEXT NOT NULL,
+                size INTEGER NOT NULL
+            );
+            CREATE INDEX idx_file_hash ON files(hash);
+            CREATE INDEX idx_dir_hash ON directories(hash);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_find_duplicate_files_none() {
+        // No files in DB — should complete without error
+        let conn = open_test_db();
+        find_duplicate_files(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_find_duplicate_files_detects_duplicates() {
+        let conn = open_test_db();
+        // Insert two files with the same hash
+        conn.execute_batch(
+            "INSERT INTO files VALUES ('/a/file.txt', 'abc123', 100, 0);
+             INSERT INTO files VALUES ('/b/file.txt', 'abc123', 100, 0);",
+        )
+        .unwrap();
+        // Should complete without error (we can't easily capture stdout in unit tests,
+        // but we verify it doesn't panic or error)
+        find_duplicate_files(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_find_duplicate_dirs_none() {
+        let conn = open_test_db();
+        find_duplicate_directories(&conn, false, None).unwrap();
+    }
+
+    #[test]
+    fn test_find_duplicate_dirs_detects_duplicates() {
+        let conn = open_test_db();
+        // Insert two directories with the same non-empty hash
+        conn.execute_batch(
+            "INSERT INTO directories VALUES ('/a/photos', 'deadbeef01234567', 1024);
+             INSERT INTO directories VALUES ('/b/photos', 'deadbeef01234567', 1024);",
+        )
+        .unwrap();
+        // delete=false so no interactive prompt is triggered
+        find_duplicate_directories(&conn, false, None).unwrap();
+    }
+}
