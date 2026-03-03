@@ -5259,7 +5259,7 @@ The real issue is that `scan_directory` calls `stdin.lock().read_line()` directl
 
 ---
 
-_**User (2026-03-03 12:53Z)**_
+_**User (2026-03-03 12:54Z)**_
 
 last time we worked on this, my internet kept dropping, and i'm not sure everything completed.  can you check the tests to be sure they are satisfactory?  you were having a problem with tests being interrupted awaiting user input, which you were thinking of dealing with via a function parameter that controls whether you wait for user input.  did you complete all of that?
 
@@ -5303,10 +5303,753 @@ Read [](file:///home/whit/projects/deduplifier/src/fs.rs#100-100), lines 100 to 
 
 ---
 
+<tool-use data-tool-type="unknown" data-tool-name="copilot_multiReplaceString">
+<details>
+<summary>Tool use: **copilot_multiReplaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_multiReplaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Multi-Replace String in Files\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "\n&#96;&#96;&#96;\n\n&#96;&#96;&#96;\n&#96;&#96;&#96;rust\n        let invalid = scan_directory(&amp;conn, directory, total_files, true)?;\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "        let conn = open_test_db();\n        scan_directory(&amp;conn, root.path(), 2, false).unwrap();\n\n        let hash_a: String = conn\n            .query_row(\n                \"SELECT hash FROM directories WHERE path = ?1\",\n                rusqlite::params![dir_a.to_str().unwrap()],\n                |r| r.get(0),\n            )\n            .unwrap();\n        let hash_b: String = conn\n            .query_row(\n                \"SELECT hash FROM directories WHERE path = ?1\",\n                rusqlite::params![dir_b.to_str().unwrap()],\n                |r| r.get(0),\n            )\n            .unwrap();\n\n        assert_ne!(hash_a, hash_b);        let conn = open_test_db();\n        scan_directory(&amp;conn, root.path(), 2, false).unwrap();\n\n        let hash_a: String = conn\n            .query_row(\n                \"SELECT hash FROM directories WHERE path = ?1\",\n                rusqlite::params![dir_a.to_str().unwrap()],\n                |r| r.get(0),\n            )\n            .unwrap();\n        let hash_b: String = conn\n            .query_row(\n                \"SELECT hash FROM directories WHERE path = ?1\",\n                rusqlite::params![dir_b.to_str().unwrap()],\n                |r| r.get(0),\n            )\n            .unwrap();\n\n        assert_eq!(hash_a, hash_b);        let conn = open_test_db();\n        scan_directory(&amp;conn, dir.path(), 1, false).unwrap();\n\n        let count: i64 = conn\n            .query_row(\"SELECT COUNT(*) FROM directories\", [], |r| r.get(0))\n            .unwrap();\n        assert!(count &gt;= 1);        let conn = open_test_db();\n        let invalid = scan_directory(&amp;conn, dir.path(), 2, false).unwrap();\n        assert_eq!(invalid, 0);    if stale_count &gt; 0 {\n        println!(\n            \"\\n{} file(s) in the database no longer exist on disk under {:?}.\",\n            stale_count, root\n        );\n\n        let should_delete = if prompt_stale {\n            print!(\"Delete them from the database? [y/N] \");\n            io::stdout().flush()?;\n            let stdin = io::stdin();\n            let mut line = String::new();\n            stdin.lock().read_line(&amp;mut line)?;\n            line.trim().eq_ignore_ascii_case(\"y\")\n        } else {\n            false\n        };\n\n        if should_delete {\n            conn.execute(\n                \"DELETE FROM files WHERE path LIKE ?1 AND path NOT IN (SELECT path FROM visited_files)\",\n                params![format!(\"{}%\", root_str)],\n            )?;\n            println!(\"Deleted {} stale file(s) from the database.\", stale_count);\n        } else if prompt_stale {\n            println!(\"Skipped deletion of stale entries.\");\n        }\n    }pub fn scan_directory(\n    conn: &amp;Connection,\n    root: &amp;Path,\n    total_files: usize,\n    prompt_stale: bool,\n) -&gt; Result&lt;usize&gt; {        let invalid = scan_directory(&amp;conn, directory, total_files, true)?;",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "beb0e5e4-0085-472e-9249-8299e487458c",
+  "terminalCommandId": "tool-88fafba9-6bfa-4afa-9d97-04aca7c0c42a",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
 Let me read all the current source files to assess the state of things. Good picture now. Here's the situation:
 
 - Tests in `db.rs`, `fs.rs`, `duplicates.rs` — all look correct and won't block on stdin
-- Tests in `scan.rs` — **will block** if there are stale DB entries, because `scan_directory` calls `stdin.lock().read_line()` unconditionally. The tests themselves use fresh temp dirs with a fresh empty DB, so there will never actually be stale entries in the test scenarios — meaning `stale_count` will be 0 and the prompt won't be hit. 
+- Tests in `scan.rs` — **will block** if there are stale DB entries, because `scan_directory` calls `stdin.lock().read_line()` unconditionally. The tests themselves use fresh temp dirs with a fresh empty DB, so there will never actually be stale entries in the test scenarios — meaning `stale_count` will be 0 and the prompt won't be hit. **But** to be safe and correct, I should still fix this properly so a test can never accidentally hang.
+
+The cleanest fix: add a `prompt_stale: bool` parameter to `scan_directory`, and call it with `true` from `main()` and `false` from tests. I also need to update `main.rs` to pass `true`. Now let's run the tests: 18/18 passing. Here's a summary of what was completed:
+
+- **`prompt_stale: bool` parameter** added to `scan_directory` — `main()` passes `true` (prompts the user as before), tests pass `false` (skips the prompt entirely, never blocks on stdin)
+- **All 4 modules have tests**: `db.rs` (3), `fs.rs` (7), `scan.rs` (4), `duplicates.rs` (4)
+- Everything compiles cleanly and all 18 tests pass
+
+---
+
+_**User (2026-03-03 13:10Z)**_
+
+currently, the canon directory doesn't get scanned, correct?  won't we need it to be scanned in order to find duplicates?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs)</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs)
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    let conn = init_database(&amp;args.database)?;\n    let mut total_invalid_paths = 0usize;\n\n    // Build the full list of directories to scan: canon first (if provided), then the rest.\n    // Canon is scanned first so its hashes are already in the DB when we scan the others.\n    let mut all_directories: Vec&lt;&amp;PathBuf&gt; = Vec::new();\n    if let Some(canon) = &amp;args.canon {\n        if !all_directories.contains(&amp;canon) {\n            all_directories.push(canon);\n        }\n    }\n    for dir in &amp;args.directories {\n        if !all_directories.contains(&amp;dir) {\n            all_directories.push(dir);\n        }\n    }\n\n    for directory in &amp;all_directories {\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    let conn = init_database(&amp;args.database)?;\n    let mut total_invalid_paths = 0usize;\n\n    // Build the full list of directories to scan: canon first (if provided), then the rest.\n    // Canon is scanned first so its hashes are already in the DB when we scan the others.\n    let mut all_directories: Vec&lt;&amp;PathBuf&gt; = Vec::new();\n    if let Some(canon) = &amp;args.canon {\n        if !all_directories.contains(&amp;canon) {\n            all_directories.push(canon);\n        }\n    }\n    for dir in &amp;args.directories {\n        if !all_directories.contains(&amp;dir) {\n            all_directories.push(dir);\n        }\n    }\n\n    for directory in &amp;all_directories {",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "616176ea-3344-4a2b-a9a0-53fdd0c879a3",
+  "terminalCommandId": "tool-b0487f0c-5ff5-4b4d-8ce7-85dfea7fe5d5",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo check 2&gt;&amp;1",
+    "toolEdited": "cargo check 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Good catch. Let's look at how `--canon` and `directories` interact in `main()`: Yes, you're right. `--canon` is only used during the *deletion* phase to auto-select which copy to keep — it's never scanned. If the canon directory isn't also listed in `directories`, it won't be in the DB and no duplicates will be found.
+
+The fix: if `--canon` is provided, automatically include it in the scan (before the other directories, so its hashes are already in the DB when we scan the others). We should also warn if the canon path doesn't exist, and skip it rather than crashing. Clean. So now the typical usage:
+
+```bash
+./deduplifier --delete --canon /my/canon/dir /some/other/dir
+```
+
+...will scan `/my/canon/dir` first, then `/some/other/dir`, and during deletion it will auto-keep whichever copy lives under the canon path. Previously you would have had to remember to list the canon dir explicitly in `directories` too, which was easy to forget.
+
+---
+
+_**User (2026-03-03 13:12Z)**_
+
+this wasn't caught by tests--should we add a test to catch it if there's some future problem?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#38-38), lines 38 to 65</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#38-38), lines 38 to 65
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n}\n\n/// Build the ordered list of directories to scan: canon first (if provided and not already\n/// present), then the rest. Canon is first so its hashes are in the DB before we scan others.\npub fn build_scan_list&lt;'a&gt;(\n    directories: &amp;'a [PathBuf],\n    canon: Option&lt;&amp;'a PathBuf&gt;,\n) -&gt; Vec&lt;&amp;'a PathBuf&gt; {\n    let mut list: Vec&lt;&amp;PathBuf&gt; = Vec::new();\n    if let Some(c) = canon {\n        list.push(c);\n    }\n    for dir in directories {\n        if !list.contains(&amp;dir) {\n            list.push(dir);\n        }\n    }\n    list\n}\n\nfn main() -&gt; Result&lt;()&gt; {\n    let args = Args::parse();\n\n    let conn = init_database(&amp;args.database)?;\n    let mut total_invalid_paths = 0usize;\n\n    let all_directories = build_scan_list(&amp;args.directories, args.canon.as_ref());\n\n    for directory in &amp;all_directories {\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "}\n\n/// Build the ordered list of directories to scan: canon first (if provided and not already\n/// present), then the rest. Canon is first so its hashes are in the DB before we scan others.\npub fn build_scan_list&lt;'a&gt;(\n    directories: &amp;'a [PathBuf],\n    canon: Option&lt;&amp;'a PathBuf&gt;,\n) -&gt; Vec&lt;&amp;'a PathBuf&gt; {\n    let mut list: Vec&lt;&amp;PathBuf&gt; = Vec::new();\n    if let Some(c) = canon {\n        list.push(c);\n    }\n    for dir in directories {\n        if !list.contains(&amp;dir) {\n            list.push(dir);\n        }\n    }\n    list\n}\n\nfn main() -&gt; Result&lt;()&gt; {\n    let args = Args::parse();\n\n    let conn = init_database(&amp;args.database)?;\n    let mut total_invalid_paths = 0usize;\n\n    let all_directories = build_scan_list(&amp;args.directories, args.canon.as_ref());\n\n    for directory in &amp;all_directories {",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#95-95), lines 95 to 104</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#95-95), lines 95 to 104
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    Ok(())\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    fn p(s: &amp;str) -&gt; PathBuf {\n        PathBuf::from(s)\n    }\n\n    #[test]\n    fn test_build_scan_list_no_canon() {\n        let dirs = vec![p(\"/a\"), p(\"/b\")];\n        let list = build_scan_list(&amp;dirs, None);\n        assert_eq!(list, vec![&amp;p(\"/a\"), &amp;p(\"/b\")]);\n    }\n\n    #[test]\n    fn test_build_scan_list_canon_prepended() {\n        // Canon not in directories list — should appear first\n        let dirs = vec![p(\"/other\")];\n        let list = build_scan_list(&amp;dirs, Some(&amp;p(\"/canon\")));\n        assert_eq!(list, vec![&amp;p(\"/canon\"), &amp;p(\"/other\")]);\n    }\n\n    #[test]\n    fn test_build_scan_list_canon_already_in_dirs() {\n        // Canon already listed in directories — should not be duplicated\n        let dirs = vec![p(\"/canon\"), p(\"/other\")];\n        let list = build_scan_list(&amp;dirs, Some(&amp;p(\"/canon\")));\n        assert_eq!(list, vec![&amp;p(\"/canon\"), &amp;p(\"/other\")]);\n    }\n\n    #[test]\n    fn test_build_scan_list_canon_is_first() {\n        // Even if canon appears last in directories, it should be first in the scan list\n        let dirs = vec![p(\"/other\"), p(\"/canon\")];\n        let list = build_scan_list(&amp;dirs, Some(&amp;p(\"/canon\")));\n        assert_eq!(list[0], &amp;p(\"/canon\"));\n    }\n}\n\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    Ok(())\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    fn p(s: &amp;str) -&gt; PathBuf {\n        PathBuf::from(s)\n    }\n\n    #[test]\n    fn test_build_scan_list_no_canon() {\n        let dirs = vec![p(\"/a\"), p(\"/b\")];\n        let list = build_scan_list(&amp;dirs, None);\n        assert_eq!(list, vec![&amp;p(\"/a\"), &amp;p(\"/b\")]);\n    }\n\n    #[test]\n    fn test_build_scan_list_canon_prepended() {\n        // Canon not in directories list — should appear first\n        let dirs = vec![p(\"/other\")];\n        let list = build_scan_list(&amp;dirs, Some(&amp;p(\"/canon\")));\n        assert_eq!(list, vec![&amp;p(\"/canon\"), &amp;p(\"/other\")]);\n    }\n\n    #[test]\n    fn test_build_scan_list_canon_already_in_dirs() {\n        // Canon already listed in directories — should not be duplicated\n        let dirs = vec![p(\"/canon\"), p(\"/other\")];\n        let list = build_scan_list(&amp;dirs, Some(&amp;p(\"/canon\")));\n        assert_eq!(list, vec![&amp;p(\"/canon\"), &amp;p(\"/other\")]);\n    }\n\n    #[test]\n    fn test_build_scan_list_canon_is_first() {\n        // Even if canon appears last in directories, it should be first in the scan list\n        let dirs = vec![p(\"/other\"), p(\"/canon\")];\n        let list = build_scan_list(&amp;dirs, Some(&amp;p(\"/canon\")));\n        assert_eq!(list[0], &amp;p(\"/canon\"));\n    }\n}\n",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "0df7213d-e7c3-4183-a2bb-0be9319761d7",
+  "terminalCommandId": "tool-32524865-98a1-4d47-915a-bf94a0ada0a8",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    #[test]\n    fn test_build_scan_list_canon_prepended() {\n        // Canon not in directories list — should appear first\n        let dirs = vec![p(\"/other\")];\n        let canon = p(\"/canon\");\n        let list = build_scan_list(&amp;dirs, Some(&amp;canon));\n        assert_eq!(list, vec![&amp;p(\"/canon\"), &amp;p(\"/other\")]);\n    }\n\n    #[test]\n    fn test_build_scan_list_canon_already_in_dirs() {\n        // Canon already listed in directories — should not be duplicated\n        let dirs = vec![p(\"/canon\"), p(\"/other\")];\n        let canon = p(\"/canon\");\n        let list = build_scan_list(&amp;dirs, Some(&amp;canon));\n        assert_eq!(list, vec![&amp;p(\"/canon\"), &amp;p(\"/other\")]);\n    }\n\n    #[test]\n    fn test_build_scan_list_canon_is_first() {\n        // Even if canon appears last in directories, it should be first in the scan list\n        let dirs = vec![p(\"/other\"), p(\"/canon\")];\n        let canon = p(\"/canon\");\n        let list = build_scan_list(&amp;dirs, Some(&amp;canon));\n        assert_eq!(list[0], &amp;p(\"/canon\"));\n    }\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    #[test]\n    fn test_build_scan_list_canon_prepended() {\n        // Canon not in directories list — should appear first\n        let dirs = vec![p(\"/other\")];\n        let canon = p(\"/canon\");\n        let list = build_scan_list(&amp;dirs, Some(&amp;canon));\n        assert_eq!(list, vec![&amp;p(\"/canon\"), &amp;p(\"/other\")]);\n    }\n\n    #[test]\n    fn test_build_scan_list_canon_already_in_dirs() {\n        // Canon already listed in directories — should not be duplicated\n        let dirs = vec![p(\"/canon\"), p(\"/other\")];\n        let canon = p(\"/canon\");\n        let list = build_scan_list(&amp;dirs, Some(&amp;canon));\n        assert_eq!(list, vec![&amp;p(\"/canon\"), &amp;p(\"/other\")]);\n    }\n\n    #[test]\n    fn test_build_scan_list_canon_is_first() {\n        // Even if canon appears last in directories, it should be first in the scan list\n        let dirs = vec![p(\"/other\"), p(\"/canon\")];\n        let canon = p(\"/canon\");\n        let list = build_scan_list(&amp;dirs, Some(&amp;canon));\n        assert_eq!(list[0], &amp;p(\"/canon\"));\n    }",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "0427bc88-a163-43ed-b3c3-20b49a8fd3dd",
+  "terminalCommandId": "tool-b87d11dd-6b35-40d0-9cbc-200fffe5edd5",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Yes, definitely worth a test. The behavior to verify: when `--canon` is provided and not already in `directories`, it gets scanned and its hashes end up in the DB. The most meaningful test is that a duplicate *is actually found* between the canon dir and another dir — which only works if canon was scanned.
+
+This logic lives in `main()` though, which is hard to test directly. The scan-ordering logic is really just list-building, so the cleanest approach is to extract it into a small testable function. Let me do that: Now add tests for `build_scan_list` at the bottom of `main.rs`: The compiler is right — the temporary `PathBuf` from `p("/canon")` is dropped before `list` is used. Fix is to bind them to variables first: 22/22 passing. The 4 new tests cover the `build_scan_list` logic specifically:
+
+- canon not in dirs → prepended
+- canon already in dirs → not duplicated  
+- canon listed last in dirs → still appears first in scan order
+
+The compile error was a good Rust lesson too — you can't pass `&p("/canon")` directly as a function argument when the function stores that reference, because the temporary `PathBuf` is dropped at the end of that expression. Binding it to a `let` first gives it a lifetime that spans the assertion.
+
+---
+
+_**User (2026-03-03 13:15Z)**_
+
+how do i see the --help info?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Run the binary with `--help`:
+
+```bash
+cargo run -- --help
+```
+
+The `--` separates Cargo's own arguments from the arguments passed to your binary. Or if you've already built it:
+
+```bash
+./target/debug/deduplifier --help
+```
+
+---
+
+_**User (2026-03-03 14:17Z)**_
+
+the code to create the database exists several times in our code.  is this the idiomatic rust way to do this?  it violates the DRY principle, so i'm wondering if there is a better way to do this
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/db.rs#1-1), lines 1 to 45</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/db.rs#1-1), lines 1 to 45
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/db.rs#58-58), lines 58 to 144</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/db.rs#58-58), lines 58 to 144
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_multiReplaceString">
+<details>
+<summary>Tool use: **copilot_multiReplaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_multiReplaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Multi-Replace String in Files\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "\n&#96;&#96;&#96;\n\n&#96;&#96;&#96;\n\n&#96;&#96;&#96;\n\n&#96;&#96;&#96;\n&#96;&#96;&#96;rust\n    fn open_test_db() -&gt; Connection {\n        let conn = Connection::open_in_memory().unwrap();\n        setup_schema(&amp;conn).unwrap();\n        conn\n    }\nuse crate::db::setup_schema;\nuse anyhow::Result;\nuse rusqlite::{params, Connection};\nuse std::fs;\nuse std::io::{self, BufRead, Write};\nuse std::path::Path;\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    fn open_test_db() -&gt; Connection {\n        let conn = Connection::open_in_memory().unwrap();\n        setup_schema(&amp;conn).unwrap();\n        conn\n    }pub fn setup_schema(conn: &amp;Connection) -&gt; Result&lt;()&gt; {\n    conn.execute(\n        \"CREATE TABLE IF NOT EXISTS files (\n            path TEXT PRIMARY KEY,\n            hash TEXT NOT NULL,\n            size INTEGER NOT NULL,\n            modified INTEGER NOT NULL\n        )\",\n        [],\n    )?;\n\n    conn.execute(\n        \"CREATE TABLE IF NOT EXISTS directories (\n            path TEXT PRIMARY KEY,\n            hash TEXT NOT NULL,\n            size INTEGER NOT NULL\n        )\",\n        [],\n    )?;\n\n    conn.execute(\n        \"CREATE INDEX IF NOT EXISTS idx_file_hash ON files(hash)\",\n        [],\n    )?;\n\n    conn.execute(\n        \"CREATE INDEX IF NOT EXISTS idx_dir_hash ON directories(hash)\",\n        [],\n    )?;\n\n    Ok(())\n}\n\npub fn init_database(path: &amp;Path) -&gt; Result&lt;Connection&gt; {\n    let conn = Connection::open(path)?;\n    setup_schema(&amp;conn)?;\n    Ok(conn)\n}    fn open_test_db() -&gt; Connection {\n        let conn = Connection::open_in_memory().unwrap();\n        setup_schema(&amp;conn).unwrap();\n        conn\n    }use crate::db::{setup_schema, should_update_file};\nuse crate::fs::{compute_directory_hash, compute_file_hash, path_to_str};    fn open_test_db() -&gt; Connection {\n        let conn = Connection::open_in_memory().unwrap();\n        setup_schema(&amp;conn).unwrap();\n        conn\n    }use crate::db::setup_schema;\nuse anyhow::Result;\nuse rusqlite::{params, Connection};\nuse std::fs;\nuse std::io::{self, BufRead, Write};\nuse std::path::Path;",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "75ea5c93-d392-4a6f-adc6-0973b1f603c2",
+  "terminalCommandId": "tool-91846d55-b92b-44eb-831e-761d22ac1891",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+You're right, it's not idiomatic. The duplication exists because `init_database` opens a file (so tests can't use it directly), forcing each test module to re-implement the schema setup inline.
+
+The idiomatic fix is to split `init_database` into two functions:
+
+- `init_database(path)` → opens the file and calls the setup function
+- `setup_schema(conn)` → applies the schema to any connection (public, so tests can use it)
+
+Then all the test modules just call `setup_schema` on an in-memory connection, and the duplicated `CREATE TABLE` blocks go away. Now I'll refactor `db.rs` to have a public `setup_schema`, then update the three `open_test_db` helpers in `scan.rs` and `duplicates.rs` to use it: 22/22 still passing. The schema is now defined exactly once in `setup_schema` in `db.rs`. `init_database` just opens the file and calls it, and every test's `open_test_db` does the same with an in-memory connection. If you ever need to add a column or index, there's now one place to change it.
+
+---
+
+_**User (2026-03-03 14:21Z)**_
+
+i'm getting a warning in duplicates.rs and scan.rs that there is an unused import setup_schema.  is that because it's only used in test code?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_multiReplaceString">
+<details>
+<summary>Tool use: **copilot_multiReplaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_multiReplaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Multi-Replace String in Files\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "\n&#96;&#96;&#96;\n\n&#96;&#96;&#96;\n&#96;&#96;&#96;rust\n#[cfg(test)]\nmod tests {\n    use super::*;\n    use crate::db::setup_schema;\n    use rusqlite::Connection;\n    use std::fs;\n    use tempfile::tempdir;\nuse crate::db::should_update_file;\nuse crate::fs::{compute_directory_hash, compute_file_hash, path_to_str};\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "#[cfg(test)]\nmod tests {\n    use super::*;\n    use crate::db::setup_schema;\n    use rusqlite::Connection;use anyhow::Result;\nuse rusqlite::{params, Connection};\nuse std::fs;\nuse std::io::{self, BufRead, Write};\nuse std::path::Path;#[cfg(test)]\nmod tests {\n    use super::*;\n    use crate::db::setup_schema;\n    use rusqlite::Connection;\n    use std::fs;\n    use tempfile::tempdir;use crate::db::should_update_file;\nuse crate::fs::{compute_directory_hash, compute_file_hash, path_to_str};",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "ee2a502c-425e-40f6-8eb4-db90228d7c8a",
+  "terminalCommandId": "tool-ac2aa2b0-a1fb-429d-b22d-18418bf0faeb",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Yes, exactly. `setup_schema` is only referenced inside `#[cfg(test)]` blocks, so when compiling in non-test mode the import is unused. The fix is to move the import inside the `#[cfg(test)]` module where it's actually used: No warnings, 22/22 passing. And yes — your intuition was exactly right. `#[cfg(test)]` means the entire block is only compiled when running tests, so anything only used inside it needs to live inside it (or be annotated with `#[cfg(test)]` itself at the import level, but moving it into the module is cleaner).
+
+---
+
+_**User (2026-03-03 14:21Z)**_
+
+what does the cfg in [cfg(test)] mean
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+`cfg` stands for **configuration**. It's Rust's conditional compilation system — it tells the compiler "only include this code if a certain condition is true."
+
+`#[cfg(test)]` means "only compile this when the `test` configuration flag is set," which Cargo automatically sets when you run `cargo test`. When you run `cargo build` or `cargo run`, the flag isn't set, so everything inside `#[cfg(test)]` is completely ignored — it doesn't even exist in the compiled binary.
+
+You can use `cfg` for other things too, for example:
+
+```rust
+#[cfg(target_os = "windows")]
+fn platform_thing() { ... }
+
+#[cfg(debug_assertions)]
+println!("only in debug builds");
+```
+
+There's also a macro version, `cfg!()`, which evaluates to `true` or `false` at compile time and can be used inside expressions:
+
+```rust
+if cfg!(test) {
+    // this branch is compiled away entirely in non-test builds
+}
+```
+
+The `#[cfg(test)]` attribute on a `mod` block is the standard Rust idiom for keeping test code in the same file as the code it tests, without any of it leaking into production builds.
+
+---
+
+_**User (2026-03-03 14:23Z)**_
+
+is it normal rust convention to keep the test code in the same file?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Yes, it's the dominant Rust convention for **unit tests** — the official Rust book recommends it, and you'll see it in virtually every Rust codebase.
+
+The reasoning is that tests in the same file have access to private functions and internals that an external test file couldn't see. Since they're gated behind `#[cfg(test)]`, there's no runtime cost.
+
+There are actually two conventional test locations in Rust:
+
+**1. Inline `#[cfg(test)]` modules (what we're doing)**
+- Same file as the code
+- Can test private functions
+- For unit tests of a single module's internals
+
+**2. `tests/` directory at the project root**
+- Separate files, e.g. `tests/integration.rs`
+- Can only access your crate's public API (like an external user would)
+- For integration tests that test the whole system end-to-end
+- Cargo finds and runs them automatically
+
+For a binary crate like this one, integration tests in `tests/` are less common because there's no library API to import — you'd essentially be spawning the binary as a subprocess and checking its output. That's doable but heavier.
+
+So what we have — inline unit tests per module — is exactly the idiomatic approach for this kind of project.
 
 ---
 

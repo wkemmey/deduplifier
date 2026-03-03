@@ -4,9 +4,7 @@ use rusqlite::{params, Connection};
 use std::path::Path;
 use std::time::SystemTime;
 
-pub fn init_database(path: &Path) -> Result<Connection> {
-    let conn = Connection::open(path)?;
-
+pub fn setup_schema(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS files (
             path TEXT PRIMARY KEY,
@@ -36,6 +34,12 @@ pub fn init_database(path: &Path) -> Result<Connection> {
         [],
     )?;
 
+    Ok(())
+}
+
+pub fn init_database(path: &Path) -> Result<Connection> {
+    let conn = Connection::open(path)?;
+    setup_schema(&conn)?;
     Ok(conn)
 }
 
@@ -64,38 +68,8 @@ mod tests {
 
     fn open_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        init_database_conn(&conn).unwrap();
+        setup_schema(&conn).unwrap();
         conn
-    }
-
-    // init_database opens a file; for tests we call the setup logic directly
-    fn init_database_conn(conn: &Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS files (
-                path TEXT PRIMARY KEY,
-                hash TEXT NOT NULL,
-                size INTEGER NOT NULL,
-                modified INTEGER NOT NULL
-            )",
-            [],
-        )?;
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS directories (
-                path TEXT PRIMARY KEY,
-                hash TEXT NOT NULL,
-                size INTEGER NOT NULL
-            )",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_file_hash ON files(hash)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_dir_hash ON directories(hash)",
-            [],
-        )?;
-        Ok(())
     }
 
     #[test]

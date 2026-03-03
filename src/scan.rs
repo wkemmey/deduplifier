@@ -170,28 +170,14 @@ pub fn scan_directory(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::setup_schema;
     use rusqlite::Connection;
     use std::fs;
     use tempfile::tempdir;
 
     fn open_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE files (
-                path TEXT PRIMARY KEY,
-                hash TEXT NOT NULL,
-                size INTEGER NOT NULL,
-                modified INTEGER NOT NULL
-            );
-            CREATE TABLE directories (
-                path TEXT PRIMARY KEY,
-                hash TEXT NOT NULL,
-                size INTEGER NOT NULL
-            );
-            CREATE INDEX idx_file_hash ON files(hash);
-            CREATE INDEX idx_dir_hash ON directories(hash);",
-        )
-        .unwrap();
+        setup_schema(&conn).unwrap();
         conn
     }
 

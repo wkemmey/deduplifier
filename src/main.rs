@@ -37,13 +37,33 @@ struct Args {
     canon: Option<PathBuf>,
 }
 
+/// Build the ordered list of directories to scan: canon first (if provided and not already
+/// present), then the rest. Canon is first so its hashes are in the DB before we scan others.
+pub fn build_scan_list<'a>(
+    directories: &'a [PathBuf],
+    canon: Option<&'a PathBuf>,
+) -> Vec<&'a PathBuf> {
+    let mut list: Vec<&PathBuf> = Vec::new();
+    if let Some(c) = canon {
+        list.push(c);
+    }
+    for dir in directories {
+        if !list.contains(&dir) {
+            list.push(dir);
+        }
+    }
+    list
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
 
     let conn = init_database(&args.database)?;
     let mut total_invalid_paths = 0usize;
 
-    for directory in &args.directories {
+    let all_directories = build_scan_list(&args.directories, args.canon.as_ref());
+
+    for directory in &all_directories {
         if !directory.exists() {
             eprintln!(
                 "Warning: Directory {:?} does not exist, skipping",
@@ -71,13 +91,56 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    println!("\n=== Finding Duplicate Directories ===");
+    println!("\n=== Finding duplicate directories ===");
     find_duplicate_directories(&conn, args.delete, args.canon.as_deref())?;
 
     if args.files {
-        println!("\n=== Finding Duplicate Files ===");
+        println!("\n=== Finding duplicate files ===");
         find_duplicate_files(&conn)?;
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn p(s: &str) -> PathBuf {
+        PathBuf::from(s)
+    }
+
+    #[test]
+    fn test_build_scan_list_no_canon() {
+        let dirs = vec![p("/a"), p("/b")];
+        let list = build_scan_list(&dirs, None);
+        assert_eq!(list, vec![&p("/a"), &p("/b")]);
+    }
+
+    #[test]
+    fn test_build_scan_list_canon_prepended() {
+        // Canon not in directories list — should appear first
+        let dirs = vec![p("/other")];
+        let canon = p("/canon");
+        let list = build_scan_list(&dirs, Some(&canon));
+        assert_eq!(list, vec![&p("/canon"), &p("/other")]);
+    }
+
+    #[test]
+    fn test_build_scan_list_canon_already_in_dirs() {
+        // Canon already listed in directories — should not be duplicated
+        let dirs = vec![p("/canon"), p("/other")];
+        let canon = p("/canon");
+        let list = build_scan_list(&dirs, Some(&canon));
+        assert_eq!(list, vec![&p("/canon"), &p("/other")]);
+    }
+
+    #[test]
+    fn test_build_scan_list_canon_is_first() {
+        // Even if canon appears last in directories, it should be first in the scan list
+        let dirs = vec![p("/other"), p("/canon")];
+        let canon = p("/canon");
+        let list = build_scan_list(&dirs, Some(&canon));
+        assert_eq!(list[0], &p("/canon"));
+    }
 }
