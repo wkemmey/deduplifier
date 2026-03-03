@@ -112,10 +112,14 @@ pub fn scan_directory(
         }
     }
 
-    // Find files in DB under root that were not seen in this scan
+    // Find files in DB under root that were not seen in this scan.
+    // LEFT JOIN is used instead of NOT IN so SQLite can use the PRIMARY KEY index
+    // on visited_files, avoiding an O(n²) scan with large file sets.
     let root_str = path_to_str(root)?.to_string();
     let stale_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM files WHERE path LIKE ?1 AND path NOT IN (SELECT path FROM visited_files)",
+        "SELECT COUNT(*) FROM files
+         LEFT JOIN visited_files ON files.path = visited_files.path
+         WHERE files.path LIKE ?1 AND visited_files.path IS NULL",
         params![format!("{}%", root_str)],
         |row| row.get(0),
     )?;
@@ -139,7 +143,11 @@ pub fn scan_directory(
 
         if should_delete {
             conn.execute(
-                "DELETE FROM files WHERE path LIKE ?1 AND path NOT IN (SELECT path FROM visited_files)",
+                "DELETE FROM files WHERE path LIKE ?1 AND path IN (
+                     SELECT files.path FROM files
+                     LEFT JOIN visited_files ON files.path = visited_files.path
+                     WHERE files.path LIKE ?1 AND visited_files.path IS NULL
+                 )",
                 params![format!("{}%", root_str)],
             )?;
             println!("Deleted {} stale file(s) from the database.", stale_count);
