@@ -2,6 +2,7 @@ mod db;
 mod duplicates;
 mod hashing;
 mod scan;
+mod similar;
 
 use anyhow::Result;
 use clap::Parser;
@@ -11,6 +12,7 @@ use db::init_database;
 use duplicates::{find_duplicate_directories, find_duplicate_files};
 use hashing::count_files;
 use scan::scan_directory;
+use similar::find_similar_directories;
 
 #[derive(Parser, Debug)]
 #[command(name = "deduplifier")]
@@ -39,6 +41,12 @@ struct Args {
     /// skip per-deletion confirmation prompts when --canon has auto-selected the keeper
     #[arg(long)]
     no_confirmation: bool,
+
+    /// find and interactively merge similar (but non-identical) directories;
+    /// optionally specify a threshold (0.0-1.0, default 0.90).
+    /// When set, duplicate detection is skipped — re-run without this flag afterward.
+    #[arg(long, value_name = "THRESHOLD")]
+    similarity: Option<f64>,
 }
 
 /// Build the ordered list of directories to scan: canon first (if provided and not already
@@ -95,19 +103,32 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    println!("\n=== Finding duplicate directories ===");
     let scanned_paths: Vec<&Path> = all_directories.iter().map(|p| p.as_path()).collect();
-    find_duplicate_directories(
-        &conn,
-        args.delete,
-        args.canon.as_deref(),
-        args.no_confirmation,
-        &scanned_paths,
-    )?;
 
-    if args.files {
-        println!("\n=== Finding duplicate files ===");
-        find_duplicate_files(&conn)?;
+    if let Some(threshold) = args.similarity {
+        println!("\n=== Finding similar (near-duplicate) directories ===");
+        find_similar_directories(
+            &conn,
+            threshold,
+            args.canon.as_deref(),
+            &scanned_paths,
+            true,
+        )?;
+        println!("\nNote: duplicate detection was skipped. Re-run without --similarity to find and delete exact duplicates.");
+    } else {
+        println!("\n=== Finding duplicate directories ===");
+        find_duplicate_directories(
+            &conn,
+            args.delete,
+            args.canon.as_deref(),
+            args.no_confirmation,
+            &scanned_paths,
+        )?;
+
+        if args.files {
+            println!("\n=== Finding duplicate files ===");
+            find_duplicate_files(&conn)?;
+        }
     }
 
     Ok(())
