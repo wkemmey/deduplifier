@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, BufRead, Write};
@@ -29,62 +29,23 @@ struct SimilarPair {
     score: f64,
 }
 
-/// Query the DB for all leaf directories under the given scanned roots.
-/// A leaf directory is one that has no subdirectory entries in `directories`
-/// whose path starts with `that_dir/`.
-fn find_leaf_directories(conn: &Connection, scanned_dirs: &[&Path]) -> Result<Vec<(String, i64)>> {
-    // Fetch all directories under scanned roots
-    let all_dirs: Vec<(String, i64)> = {
-        let mut stmt = conn.prepare("SELECT path, size FROM directories ORDER BY path")?;
-        let rows: Vec<(String, i64)> = stmt
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })?
-            .collect::<rusqlite::Result<_>>()?;
-        rows
-    };
+// ---------------------------------------------------------------------------
+// In-memory index types
+// ---------------------------------------------------------------------------
 
-    // Filter to only those under a scanned root
-    let under_scan: Vec<(String, i64)> = all_dirs
-        .iter()
-        .filter(|(p, _)| {
-            if scanned_dirs.is_empty() {
-                return true;
-            }
-            let candidate = Path::new(p);
-            scanned_dirs.iter().any(|root| candidate.starts_with(root))
-        })
-        .cloned()
-        .collect();
+/// rel_path -> (abs_path, hash, modified)
+type FileMap = HashMap<String, (String, String, i64)>;
 
-    // Build a set of all scanned paths for fast child lookup
-    let path_set: HashSet<String> = under_scan.iter().map(|(p, _)| p.clone()).collect();
+/// dir_path -> FileMap  (only for directories under scanned roots)
+type DirIndex = HashMap<String, FileMap>;
 
-    // A directory is a leaf if no other directory in the set is a strict child of it
-    let leaves: Vec<(String, i64)> = under_scan
-        .into_iter()
-        .filter(|(p, _)| {
-            let prefix = format!("{}/", p);
-            !path_set.iter().any(|other| other.starts_with(&prefix))
-        })
-        .collect();
-
-    Ok(leaves)
-}
-
-/// Fetch files under a directory path (non-recursive prefix match from DB).
-/// Returns map of relative_path -> (abs_path, hash, modified).
-fn files_under(
-    conn: &Connection,
-    dir_path: &str,
-) -> Result<HashMap<String, (String, String, i64)>> {
-    let prefix = format!("{}/", dir_path);
-    let prefix_len = prefix.len();
-
-    let mut stmt =
-        conn.prepare("SELECT path, hash, modified FROM files WHERE path LIKE ?1 || '%'")?;
+/// Load every file under the scanned roots into a nested map keyed first by
+/// its immediate parent directory path, then by relative path within that dir.
+/// One DB query replaces hundreds of per-pair LIKE queries.
+fn build_dir_index(conn: &Connection, scanned_dirs: &[&Path]) -> Result<DirIndex> {
+    let mut stmt = conn.prepare("SELECT path, hash, modified FROM files ORDER BY path")?;
     let rows: Vec<(String, String, i64)> = stmt
-        .query_map(params![prefix.trim_end_matches('%')], |row| {
+        .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -93,24 +54,111 @@ fn files_under(
         })?
         .collect::<rusqlite::Result<_>>()?;
 
-    let mut map = HashMap::new();
+    let mut index: DirIndex = HashMap::new();
     for (abs_path, hash, modified) in rows {
-        if abs_path.starts_with(&prefix) {
-            let rel = abs_path[prefix_len..].to_string();
-            map.insert(rel, (abs_path, hash, modified));
+        // Filter to scanned roots if any are specified
+        if !scanned_dirs.is_empty() {
+            let p = Path::new(&abs_path);
+            if !scanned_dirs.iter().any(|root| p.starts_with(root)) {
+                continue;
+            }
+        }
+        // Attribute the file to its immediate parent directory
+        if let Some(parent) = Path::new(&abs_path).parent() {
+            let dir_str = parent.to_string_lossy().to_string();
+            let rel = Path::new(&abs_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            index
+                .entry(dir_str)
+                .or_default()
+                .insert(rel, (abs_path, hash, modified));
         }
     }
-    Ok(map)
+    Ok(index)
 }
 
-/// Compute the similarity between two directories using data already in the DB.
-/// Returns None if there are no files to compare.
-fn compare_dirs(conn: &Connection, path_a: &str, path_b: &str) -> Result<Option<SimilarPair>> {
-    let files_a = files_under(conn, path_a)?;
-    let files_b = files_under(conn, path_b)?;
+/// Query the DB for all leaf directories under the given scanned roots.
+/// A leaf directory is one that has no subdirectory entries in `directories`
+/// whose path starts with `that_dir/`.
+fn find_leaf_directories(conn: &Connection, scanned_dirs: &[&Path]) -> Result<Vec<String>> {
+    let all_dirs: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT path FROM directories ORDER BY path")?;
+        let rows: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        rows
+    };
+
+    // Filter to only those under a scanned root
+    let under_scan: Vec<String> = all_dirs
+        .into_iter()
+        .filter(|p| {
+            if scanned_dirs.is_empty() {
+                return true;
+            }
+            scanned_dirs
+                .iter()
+                .any(|root| Path::new(p).starts_with(root))
+        })
+        .collect();
+
+    // Build a set for O(1) child-prefix checks
+    let path_set: HashSet<&str> = under_scan.iter().map(|p| p.as_str()).collect();
+
+    // A directory is a leaf if no other path in the set starts with `dir/`
+    let leaves: Vec<String> = under_scan
+        .iter()
+        .filter(|p| {
+            let prefix = format!("{}/", p);
+            !path_set.iter().any(|other| other.starts_with(&prefix))
+        })
+        .cloned()
+        .collect();
+
+    Ok(leaves)
+}
+
+/// Compare two directories using the preloaded in-memory index.
+/// `dir_index` maps dir_path -> (rel_filename -> (abs, hash, modified)).
+/// For a leaf this is just the immediate files; for a non-leaf (walked-up
+/// ancestor) we need to include all files recursively — handled by
+/// `files_for_dir` which aggregates across all children in the index.
+fn files_for_dir<'a>(
+    dir_index: &'a DirIndex,
+    dir_path: &str,
+) -> HashMap<String, &'a (String, String, i64)> {
+    let prefix = format!("{}/", dir_path);
+    let mut result: HashMap<String, &'a (String, String, i64)> = HashMap::new();
+    for (indexed_dir, files) in dir_index {
+        // Include the dir itself and all recursive children
+        if indexed_dir == dir_path || indexed_dir.starts_with(&prefix) {
+            let strip_len = dir_path.len() + 1; // +1 for the '/'
+            for (rel, entry) in files {
+                // Build full relative path from dir_path root
+                let full_rel = if indexed_dir == dir_path {
+                    rel.clone()
+                } else {
+                    format!("{}/{}", &indexed_dir[strip_len..], rel)
+                };
+                result.insert(full_rel, entry);
+            }
+        }
+    }
+    result
+}
+
+fn compare_dirs_mem<'a>(
+    dir_index: &'a DirIndex,
+    path_a: &str,
+    path_b: &str,
+) -> Option<SimilarPair> {
+    let files_a = files_for_dir(dir_index, path_a);
+    let files_b = files_for_dir(dir_index, path_b);
 
     if files_a.is_empty() && files_b.is_empty() {
-        return Ok(None);
+        return None;
     }
 
     let keys_a: HashSet<&str> = files_a.keys().map(|s| s.as_str()).collect();
@@ -120,15 +168,15 @@ fn compare_dirs(conn: &Connection, path_a: &str, path_b: &str) -> Result<Option<
     let total_unique = keys_a.union(&keys_b).count();
 
     if total_unique == 0 {
-        return Ok(None);
+        return None;
     }
 
     let mut identical = 0usize;
     let mut conflicts: Vec<(String, String, String, i64, i64)> = Vec::new();
 
     for rel in &shared_keys {
-        let (_, hash_a, mod_a) = &files_a[*rel];
-        let (_, hash_b, mod_b) = &files_b[*rel];
+        let (_, hash_a, mod_a) = files_a[*rel];
+        let (_, hash_b, mod_b) = files_b[*rel];
         if hash_a == hash_b {
             identical += 1;
         } else {
@@ -145,7 +193,7 @@ fn compare_dirs(conn: &Connection, path_a: &str, path_b: &str) -> Result<Option<
     let only_in_a: Vec<(String, String)> = keys_a
         .difference(&keys_b)
         .map(|rel| {
-            let (abs, _, _) = &files_a[*rel];
+            let (abs, _, _) = files_a[*rel];
             (rel.to_string(), abs.clone())
         })
         .collect();
@@ -153,15 +201,14 @@ fn compare_dirs(conn: &Connection, path_a: &str, path_b: &str) -> Result<Option<
     let only_in_b: Vec<(String, String)> = keys_b
         .difference(&keys_a)
         .map(|rel| {
-            let (abs, _, _) = &files_b[*rel];
+            let (abs, _, _) = files_b[*rel];
             (rel.to_string(), abs.clone())
         })
         .collect();
 
-    // Jaccard-like: shared (regardless of hash match) / total unique paths
     let score = shared_keys.len() as f64 / total_unique as f64;
 
-    Ok(Some(SimilarPair {
+    Some(SimilarPair {
         a: DirSide {
             path: path_a.to_string(),
             file_count: files_a.len(),
@@ -175,19 +222,19 @@ fn compare_dirs(conn: &Connection, path_a: &str, path_b: &str) -> Result<Option<
         only_in_a,
         only_in_b,
         score,
-    }))
+    })
 }
 
-/// Given two paths that are similar, walk up both simultaneously checking whether
-/// the parents are also similar (above threshold). Stop at scanned roots.
-/// Returns the highest ancestor pair that is still above threshold.
-fn walk_up_similar(
-    conn: &Connection,
+/// Walk up both paths simultaneously while the parents remain similar and are
+/// within the scanned roots. Uses the preloaded sets/index — no DB queries.
+fn walk_up_similar_mem(
+    dir_index: &DirIndex,
+    all_dir_paths: &HashSet<String>,
     mut path_a: String,
     mut path_b: String,
     threshold: f64,
     scanned_dirs: &[&Path],
-) -> Result<(String, String)> {
+) -> (String, String) {
     loop {
         let parent_a = match Path::new(&path_a).parent() {
             Some(p) => p.to_string_lossy().to_string(),
@@ -198,42 +245,31 @@ fn walk_up_similar(
             None => break,
         };
 
-        // Don't walk above any scanned root
-        let a_at_root = scanned_dirs.iter().any(|root| {
-            Path::new(&path_a) == *root
-                || Path::new(&path_a).starts_with(root) && Path::new(&parent_a) == *root
-        });
-        let b_at_root = scanned_dirs.iter().any(|root| {
-            Path::new(&path_b) == *root
-                || Path::new(&path_b).starts_with(root) && Path::new(&parent_b) == *root
-        });
-        if a_at_root || b_at_root {
+        // Stop if either current path is already a scanned root
+        if !scanned_dirs.is_empty() {
+            let a_is_root = scanned_dirs.iter().any(|r| Path::new(&path_a) == *r);
+            let b_is_root = scanned_dirs.iter().any(|r| Path::new(&path_b) == *r);
+            if a_is_root || b_is_root {
+                break;
+            }
+            // Also stop if the parent would be above a scanned root
+            let a_parent_above = scanned_dirs
+                .iter()
+                .any(|r| Path::new(&path_a).starts_with(r) && !Path::new(&parent_a).starts_with(r));
+            let b_parent_above = scanned_dirs
+                .iter()
+                .any(|r| Path::new(&path_b).starts_with(r) && !Path::new(&parent_b).starts_with(r));
+            if a_parent_above || b_parent_above {
+                break;
+            }
+        }
+
+        // Parents must be known directories
+        if !all_dir_paths.contains(&parent_a) || !all_dir_paths.contains(&parent_b) {
             break;
         }
 
-        // Parents must themselves be in the directories table to be meaningful
-        let parent_a_exists: bool = conn
-            .query_row(
-                "SELECT COUNT(*) FROM directories WHERE path = ?1",
-                params![parent_a],
-                |row| row.get::<_, i64>(0),
-            )
-            .unwrap_or(0)
-            > 0;
-        let parent_b_exists: bool = conn
-            .query_row(
-                "SELECT COUNT(*) FROM directories WHERE path = ?1",
-                params![parent_b],
-                |row| row.get::<_, i64>(0),
-            )
-            .unwrap_or(0)
-            > 0;
-
-        if !parent_a_exists || !parent_b_exists {
-            break;
-        }
-
-        match compare_dirs(conn, &parent_a, &parent_b)? {
+        match compare_dirs_mem(dir_index, &parent_a, &parent_b) {
             Some(pair) if pair.score >= threshold => {
                 path_a = parent_a;
                 path_b = parent_b;
@@ -242,21 +278,15 @@ fn walk_up_similar(
         }
     }
 
-    Ok((path_a, path_b))
+    (path_a, path_b)
 }
 
 /// Perform the merge: copy files that are only in `src` into `dst`, and for
 /// conflicts keep the newer file by copying it over the older.
 /// Returns the number of files copied.
-fn merge_into(
-    pair: &SimilarPair,
-    keep_path: &str,
-    discard_path: &str,
-    _conn: &Connection,
-) -> Result<usize> {
+fn merge_into(pair: &SimilarPair, keep_path: &str, discard_path: &str) -> Result<usize> {
     let mut copied = 0;
 
-    // Files only in the discard side need to be copied into keep
     let only_in_discard: &[(String, String)] = if discard_path == pair.b.path {
         &pair.only_in_b
     } else {
@@ -274,20 +304,17 @@ fn merge_into(
         copied += 1;
     }
 
-    // Conflicts: copy the newer file into the keep side (overwriting older)
     for (rel, _hash_a, _hash_b, mod_a, mod_b) in &pair.conflicts {
         let (src_abs, dst_abs) = if discard_path == pair.b.path {
-            // keep=A, discard=B: copy B->A only if B is newer
             if mod_b > mod_a {
                 (
                     format!("{}/{}", pair.b.path, rel),
                     format!("{}/{}", pair.a.path, rel),
                 )
             } else {
-                continue; // A is already newer or equal, nothing to do
+                continue;
             }
         } else {
-            // keep=B, discard=A: copy A->B only if A is newer
             if mod_a > mod_b {
                 (
                     format!("{}/{}", pair.a.path, rel),
@@ -312,13 +339,33 @@ pub fn find_similar_directories(
     scanned_dirs: &[&Path],
     merge: bool,
 ) -> Result<()> {
+    // ------------------------------------------------------------------
+    // Phase 1: load everything into memory (2 queries total)
+    // ------------------------------------------------------------------
+    println!("Loading file index into memory...");
+    let dir_index = build_dir_index(conn, scanned_dirs)?;
+
+    // Set of all known directory paths (for walk-up parent checks)
+    let all_dir_paths: HashSet<String> = {
+        let mut stmt = conn.prepare("SELECT path FROM directories")?;
+        let paths: HashSet<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<HashSet<String>>>()?;
+        paths
+    };
+
+    // ------------------------------------------------------------------
+    // Phase 2: find leaf directories
+    // ------------------------------------------------------------------
     println!("Finding leaf directories...");
     let leaves = find_leaf_directories(conn, scanned_dirs)?;
     println!("Found {} leaf directories.", leaves.len());
 
-    // Group leaves by their directory name (last path component)
+    // ------------------------------------------------------------------
+    // Phase 3: build candidate pairs (same name, file count within 20%)
+    // ------------------------------------------------------------------
     let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
-    for (path, _size) in &leaves {
+    for path in &leaves {
         if let Some(name) = Path::new(path).file_name().and_then(|n| n.to_str()) {
             by_name
                 .entry(name.to_string())
@@ -327,22 +374,8 @@ pub fn find_similar_directories(
         }
     }
 
-    // Build candidate pairs: same name, file counts within 20% of each other
-    let leaf_file_counts: HashMap<String, usize> = {
-        let mut map = HashMap::new();
-        for (path, _) in &leaves {
-            let count = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM files WHERE path LIKE ?1 || '/%'",
-                    params![path],
-                    |row| row.get::<_, i64>(0),
-                )
-                .unwrap_or(0) as usize;
-            map.insert(path.clone(), count);
-        }
-        map
-    };
-
+    // File count for each leaf is just the size of its entry in dir_index
+    // (leaves have no children, so this equals their total recursive count too)
     let mut candidate_pairs: Vec<(String, String)> = Vec::new();
     for (_name, paths) in &by_name {
         if paths.len() < 2 {
@@ -350,66 +383,106 @@ pub fn find_similar_directories(
         }
         for i in 0..paths.len() {
             for j in (i + 1)..paths.len() {
-                let count_i = leaf_file_counts.get(&paths[i]).copied().unwrap_or(0);
-                let count_j = leaf_file_counts.get(&paths[j]).copied().unwrap_or(0);
+                let count_i = dir_index.get(&paths[i]).map(|m| m.len()).unwrap_or(0);
+                let count_j = dir_index.get(&paths[j]).map(|m| m.len()).unwrap_or(0);
                 if count_i == 0 && count_j == 0 {
                     continue;
                 }
-                let max_count = count_i.max(count_j) as f64;
-                let min_count = count_i.min(count_j) as f64;
-                if min_count / max_count >= 0.80 {
+                let max_c = count_i.max(count_j) as f64;
+                let min_c = count_i.min(count_j) as f64;
+                if min_c / max_c >= 0.80 {
                     candidate_pairs.push((paths[i].clone(), paths[j].clone()));
                 }
             }
         }
     }
 
+    let total_candidates = candidate_pairs.len();
     println!(
         "Checking {} candidate leaf pairs (same name, similar file count)...",
-        candidate_pairs.len()
+        total_candidates
     );
 
-    // Score each candidate pair and walk up to find the highest similar ancestor
-    // Deduplicate by ancestor pair so multiple leaf matches under the same parents
-    // don't produce duplicate reports.
+    // ------------------------------------------------------------------
+    // Phase 4: score pairs, walk up, deduplicate
+    // ------------------------------------------------------------------
     let mut seen_pairs: HashSet<(String, String)> = HashSet::new();
+    // Track leaves that have been absorbed into a higher-level ancestor pair
+    let mut absorbed_leaves: HashSet<String> = HashSet::new();
     let mut similar_pairs: Vec<SimilarPair> = Vec::new();
 
-    for (leaf_a, leaf_b) in &candidate_pairs {
-        let pair = match compare_dirs(conn, leaf_a, leaf_b)? {
+    for (checked, (leaf_a, leaf_b)) in candidate_pairs.iter().enumerate() {
+        // Progress indicator
+        if checked % 50 == 0 || checked + 1 == total_candidates {
+            print!(
+                "\r\x1B[K  {}/{} pairs checked, {} similar found",
+                checked + 1,
+                total_candidates,
+                similar_pairs.len()
+            );
+            io::stdout().flush()?;
+        }
+
+        // Skip if both leaves are already absorbed by an ancestor result
+        if absorbed_leaves.contains(leaf_a) && absorbed_leaves.contains(leaf_b) {
+            continue;
+        }
+
+        let pair = match compare_dirs_mem(&dir_index, leaf_a, leaf_b) {
             Some(p) if p.score >= threshold => p,
             _ => continue,
         };
 
         // Walk up to find the highest similar ancestor
-        let (top_a, top_b) = walk_up_similar(
-            conn,
+        let (top_a, top_b) = walk_up_similar_mem(
+            &dir_index,
+            &all_dir_paths,
             leaf_a.clone(),
             leaf_b.clone(),
             threshold,
             scanned_dirs,
-        )?;
+        );
 
-        // Normalise pair key so (A,B) and (B,A) are the same
+        // Normalise pair key
         let key = if top_a <= top_b {
             (top_a.clone(), top_b.clone())
         } else {
             (top_b.clone(), top_a.clone())
         };
         if seen_pairs.contains(&key) {
+            // Still absorb these leaves even though the pair is already recorded
+            absorbed_leaves.insert(leaf_a.clone());
+            absorbed_leaves.insert(leaf_b.clone());
             continue;
         }
         seen_pairs.insert(key);
 
-        // Re-compare at the top level (may differ from leaf-level pair)
-        match compare_dirs(conn, &top_a, &top_b)? {
-            Some(top_pair) if top_pair.score >= threshold => similar_pairs.push(top_pair),
-            _ => {
-                // Walk-up landed at the same level as the leaf (didn't move), use leaf pair
-                similar_pairs.push(pair);
+        // Mark both leaves (and any leaves under the top-level ancestors) as absorbed
+        absorbed_leaves.insert(leaf_a.clone());
+        absorbed_leaves.insert(leaf_b.clone());
+
+        // Re-compare at the top level
+        let top_pair = if top_a == *leaf_a && top_b == *leaf_b {
+            pair // didn't walk up, reuse
+        } else {
+            match compare_dirs_mem(&dir_index, &top_a, &top_b) {
+                Some(p) if p.score >= threshold => p,
+                _ => continue,
             }
+        };
+
+        // Skip exact duplicates (score 1.0, no conflicts, nothing only in one side) —
+        // they produce a no-op merge and are already handled by duplicate detection.
+        if top_pair.only_in_a.is_empty()
+            && top_pair.only_in_b.is_empty()
+            && top_pair.conflicts.is_empty()
+        {
+            continue;
         }
+
+        similar_pairs.push(top_pair);
     }
+    println!(); // end progress line
 
     // Sort by score descending
     similar_pairs.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
@@ -478,7 +551,6 @@ pub fn find_similar_directories(
             continue;
         }
 
-        // Determine which side to keep (canon wins; otherwise ask)
         let canon_a = canon
             .map(|c| Path::new(&pair.a.path).starts_with(c))
             .unwrap_or(false);
@@ -519,7 +591,6 @@ pub fn find_similar_directories(
             }
         }
 
-        // Summarise what will happen and ask for confirmation
         let files_to_copy = pair.only_in_a.len().max(pair.only_in_b.len())
             + pair
                 .conflicts
@@ -540,13 +611,13 @@ pub fn find_similar_directories(
             continue;
         }
 
-        let copied = merge_into(pair, &keep_path, &discard_path, conn)?;
+        let copied = merge_into(pair, &keep_path, &discard_path)?;
         println!(
             "  Merge complete: {} file(s) copied into '{}'.",
             copied, keep_path
         );
         println!(
-            "  Note: re-run without --similar to detect '{}' as a duplicate and delete it.",
+            "  Note: re-run without --similarity to detect '{}' as a duplicate and delete it.",
             discard_path
         );
         println!();
@@ -570,14 +641,11 @@ mod tests {
     #[test]
     fn test_find_similar_no_leaves() {
         let conn = open_test_db();
-        // Empty DB — should complete without error
         find_similar_directories(&conn, 0.9, None, &[], false).unwrap();
     }
 
     #[test]
     fn test_find_similar_identical_leaves_not_reported() {
-        // Two leaves with identical file sets should NOT appear as "similar but non-identical"
-        // (they'd be exact duplicates, handled by find_duplicate_directories)
         let conn = open_test_db();
         conn.execute_batch(
             "INSERT INTO directories VALUES ('/a/photos', 'hash1', 1000);
@@ -586,16 +654,12 @@ mod tests {
              INSERT INTO files VALUES ('/b/photos/img1.jpg', 'filehash1', 500, 1000);",
         )
         .unwrap();
-        // Score = 1.0 but all files are identical — the pair passes the threshold
-        // but that's fine; in practice it'd already be caught by exact-hash dedup.
-        // Just verify it doesn't panic.
         find_similar_directories(&conn, 0.9, None, &[], false).unwrap();
     }
 
     #[test]
     fn test_find_similar_detects_near_duplicate() {
         let conn = open_test_db();
-        // /a/photos has 10 files, /b/photos has 9 of the same + 1 extra
         let mut batch = String::from(
             "INSERT INTO directories VALUES ('/a/photos', 'hashA', 5000);
              INSERT INTO directories VALUES ('/b/photos', 'hashB', 4500);",
@@ -618,7 +682,6 @@ mod tests {
     #[test]
     fn test_find_similar_below_threshold_not_reported() {
         let conn = open_test_db();
-        // /a/photos and /b/photos share only 1 of 10 files — score = 0.1
         let mut batch = String::from(
             "INSERT INTO directories VALUES ('/a/photos', 'hashA', 5000);
              INSERT INTO directories VALUES ('/b/photos', 'hashB', 5000);",
@@ -628,18 +691,14 @@ mod tests {
                 "INSERT INTO files VALUES ('/a/photos/imgA{}.jpg', 'fhA{}', 500, 1000);",
                 i, i
             ));
-        }
-        for i in 1..=9 {
             batch.push_str(&format!(
                 "INSERT INTO files VALUES ('/b/photos/imgB{}.jpg', 'fhB{}', 500, 1000);",
                 i, i
             ));
         }
-        // One shared file
         batch.push_str("INSERT INTO files VALUES ('/a/photos/shared.jpg', 'shared', 500, 1000);");
         batch.push_str("INSERT INTO files VALUES ('/b/photos/shared.jpg', 'shared', 500, 1000);");
         conn.execute_batch(&batch).unwrap();
-        // With threshold 0.9, this pair (score ~0.1) should NOT be reported
         find_similar_directories(&conn, 0.9, None, &[], false).unwrap();
     }
 }
