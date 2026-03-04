@@ -55,6 +55,7 @@ pub fn find_duplicate_directories(
     delete: bool,
     canon: Option<&Path>,
     no_confirmation: bool,
+    scanned_dirs: &[&Path],
 ) -> Result<()> {
     // Collect all duplicate groups upfront so we can iterate interactively
     let mut stmt = conn.prepare(
@@ -81,20 +82,36 @@ pub fn find_duplicate_directories(
         return Ok(());
     }
 
-    // For each group, fetch its member paths upfront.
-    // Then filter out groups where every member is a subdirectory of a path
-    // that itself appears in another duplicate group — those will be handled
-    // implicitly when the parent duplicate is deleted.
+    // For each group, fetch its member paths upfront, then filter to only
+    // members that fall under one of the scanned directories.
+    // Groups with fewer than 2 members after filtering are skipped entirely —
+    // the out-of-scope members stay in the DB untouched for a future run.
     let mut groups_with_paths: Vec<(String, i64, i64, Vec<(String, i64)>)> = Vec::new();
     for (hash, count, max_size) in &duplicate_groups {
         let mut dir_stmt =
             conn.prepare("SELECT path, size FROM directories WHERE hash = ?1 ORDER BY path")?;
-        let dirs: Vec<(String, i64)> = dir_stmt
+        let all_dirs: Vec<(String, i64)> = dir_stmt
             .query_map(params![hash], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })?
             .collect::<rusqlite::Result<_>>()?;
-        groups_with_paths.push((hash.clone(), *count, *max_size, dirs));
+
+        // Keep only members that are under one of the scanned directories
+        let dirs: Vec<(String, i64)> = if scanned_dirs.is_empty() {
+            all_dirs
+        } else {
+            all_dirs
+                .into_iter()
+                .filter(|(p, _)| {
+                    let candidate = Path::new(p);
+                    scanned_dirs.iter().any(|root| candidate.starts_with(root))
+                })
+                .collect()
+        };
+
+        if dirs.len() >= 2 {
+            groups_with_paths.push((hash.clone(), *count, *max_size, dirs));
+        }
     }
 
     // Build a flat set of all paths that appear in any duplicate group
@@ -150,6 +167,27 @@ pub fn find_duplicate_directories(
         } else {
             None
         };
+
+        // If --no-confirmation is set and multiple members are under canon, we can't
+        // safely auto-select — deleting within canon silently would defeat its purpose.
+        // When confirming individually, the user can handle it themselves.
+        if no_confirmation {
+            if let Some(canon_path) = canon {
+                let canon_count = dirs
+                    .iter()
+                    .filter(|(p, _)| Path::new(p).starts_with(canon_path))
+                    .count();
+                if canon_count > 1 {
+                    println!(
+                        "  Warning: {} members are under --canon ({}); skipping this group.",
+                        canon_count,
+                        canon_path.display()
+                    );
+                    println!();
+                    continue;
+                }
+            }
+        }
 
         let keep_idx: usize = if let Some(idx) = auto_keep {
             println!(
@@ -274,7 +312,7 @@ mod tests {
     #[test]
     fn test_find_duplicate_dirs_none() {
         let conn = open_test_db();
-        find_duplicate_directories(&conn, false, None, false).unwrap();
+        find_duplicate_directories(&conn, false, None, false, &[]).unwrap();
     }
 
     #[test]
@@ -286,7 +324,8 @@ mod tests {
              INSERT INTO directories VALUES ('/b/photos', 'deadbeef01234567', 1024);",
         )
         .unwrap();
-        // delete=false so no interactive prompt is triggered
-        find_duplicate_directories(&conn, false, None, false).unwrap();
+        // delete=false so no interactive prompt is triggered.
+        // Empty scanned_dirs means no filtering — both members are visible.
+        find_duplicate_directories(&conn, false, None, false, &[]).unwrap();
     }
 }

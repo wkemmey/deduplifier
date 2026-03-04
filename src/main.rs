@@ -5,7 +5,7 @@ mod scan;
 
 use anyhow::Result;
 use clap::Parser;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use db::init_database;
 use duplicates::{find_duplicate_directories, find_duplicate_files};
@@ -96,11 +96,13 @@ fn main() -> Result<()> {
     }
 
     println!("\n=== Finding duplicate directories ===");
+    let scanned_paths: Vec<&Path> = all_directories.iter().map(|p| p.as_path()).collect();
     find_duplicate_directories(
         &conn,
         args.delete,
         args.canon.as_deref(),
         args.no_confirmation,
+        &scanned_paths,
     )?;
 
     if args.files {

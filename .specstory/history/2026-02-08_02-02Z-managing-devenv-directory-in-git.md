@@ -7518,7 +7518,7 @@ Good reduction — about 70% of the groups were subdirectory duplicates. 1204 is
 
 ---
 
-_**User (2026-03-03 22:47Z)**_
+_**User (2026-03-03 22:56Z)**_
 
 let's do it but let's call it --no-confirmation, and it should only affect cases where one of the choices is in canon (which you are already saying)
 
@@ -7574,10 +7574,838 @@ Read [](file:///home/whit/projects/deduplifier/src/duplicates.rs#145-145), lines
 
 ---
 
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#1-1), lines 1 to 100</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#1-1), lines 1 to 100
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/duplicates.rs#155-155), lines 155 to 230</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/duplicates.rs#155-155), lines 155 to 230
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="search" data-tool-name="copilot_findTextInFiles">
+<details>
+<summary>Tool use: **copilot_findTextInFiles** • Searching for text `pub fn find_duplicate_directories` (`**/src/duplicates.rs`)</summary>
+
+
+Searched for text `pub fn find_duplicate_directories` (`**/src/duplicates.rs`), 1 result
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/duplicates.rs#53-53), lines 53 to 60</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/duplicates.rs#53-53), lines 53 to 60
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep\n    #[arg(long)]\n    canon: Option&lt;PathBuf&gt;,\n\n    /// skip per-deletion confirmation prompts when --canon has auto-selected the keeper\n    #[arg(long)]\n    no_confirmation: bool,\n}\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep\n    #[arg(long)]\n    canon: Option&lt;PathBuf&gt;,\n\n    /// skip per-deletion confirmation prompts when --canon has auto-selected the keeper\n    #[arg(long)]\n    no_confirmation: bool,\n}",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    println!(\"\\n=== Finding duplicate directories ===\");\n    find_duplicate_directories(&amp;conn, args.delete, args.canon.as_deref(), args.no_confirmation)?;\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    println!(\"\\n=== Finding duplicate directories ===\");\n    find_duplicate_directories(&amp;conn, args.delete, args.canon.as_deref(), args.no_confirmation)?;",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\npub fn find_duplicate_directories(\n    conn: &amp;Connection,\n    delete: bool,\n    canon: Option&lt;&amp;Path&gt;,\n    no_confirmation: bool,\n) -&gt; Result&lt;()&gt; {\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "pub fn find_duplicate_directories(\n    conn: &amp;Connection,\n    delete: bool,\n    canon: Option&lt;&amp;Path&gt;,\n    no_confirmation: bool,\n) -&gt; Result&lt;()&gt; {",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n        for path in &amp;to_delete {\n            // When --no-confirmation is set and canon drove the choice, skip the prompt\n            let confirmed = if no_confirmation &amp;&amp; auto_keep.is_some() {\n                println!(\"  Deleting '{}' (--no-confirmation)\", path);\n                true\n            } else {\n                print!(\"  Confirm deletion of '{}' [y/N] &gt; \", path);\n                io::stdout().flush()?;\n                let mut confirmation = String::new();\n                stdin.lock().read_line(&amp;mut confirmation)?;\n                if !confirmation.trim().eq_ignore_ascii_case(\"y\") {\n                    println!(\"  Skipped.\");\n                    false\n                } else {\n                    true\n                }\n            };\n\n            if !confirmed {\n                continue;\n            }\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "        for path in &amp;to_delete {\n            // When --no-confirmation is set and canon drove the choice, skip the prompt\n            let confirmed = if no_confirmation &amp;&amp; auto_keep.is_some() {\n                println!(\"  Deleting '{}' (--no-confirmation)\", path);\n                true\n            } else {\n                print!(\"  Confirm deletion of '{}' [y/N] &gt; \", path);\n                io::stdout().flush()?;\n                let mut confirmation = String::new();\n                stdin.lock().read_line(&amp;mut confirmation)?;\n                if !confirmation.trim().eq_ignore_ascii_case(\"y\") {\n                    println!(\"  Skipped.\");\n                    false\n                } else {\n                    true\n                }\n            };\n\n            if !confirmed {\n                continue;\n            }",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="search" data-tool-name="copilot_findTextInFiles">
+<details>
+<summary>Tool use: **copilot_findTextInFiles** • Searching for text `find_duplicate_directories(` (`**/src/duplicates.rs`)</summary>
+
+
+Searched for text `find_duplicate_directories(` (`**/src/duplicates.rs`), 3 results
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/duplicates.rs#270-270), lines 270 to 293</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/duplicates.rs#270-270), lines 270 to 293
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n        find_duplicate_directories(&amp;conn, false, None, false).unwrap();\n    }\n\n    #[test]\n    fn test_find_duplicate_dirs_detects_duplicates() {\n        let conn = open_test_db();\n        // Insert two directories with the same non-empty hash\n        conn.execute_batch(\n            \"INSERT INTO directories VALUES ('/a/photos', 'deadbeef01234567', 1024);\n             INSERT INTO directories VALUES ('/b/photos', 'deadbeef01234567', 1024);\",\n        )\n        .unwrap();\n        // delete=false so no interactive prompt is triggered\n        find_duplicate_directories(&amp;conn, false, None, false).unwrap();\n    }\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "        find_duplicate_directories(&amp;conn, false, None, false).unwrap();\n    }\n\n    #[test]\n    fn test_find_duplicate_dirs_detects_duplicates() {\n        let conn = open_test_db();\n        // Insert two directories with the same non-empty hash\n        conn.execute_batch(\n            \"INSERT INTO directories VALUES ('/a/photos', 'deadbeef01234567', 1024);\n             INSERT INTO directories VALUES ('/b/photos', 'deadbeef01234567', 1024);\",\n        )\n        .unwrap();\n        // delete=false so no interactive prompt is triggered\n        find_duplicate_directories(&amp;conn, false, None, false).unwrap();\n    }",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "6b627e26-0b65-4774-86c1-5feacce2bb8d",
+  "terminalCommandId": "tool-bf163030-2cb4-4c2f-956d-daabb9bbffe8",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
 Now let me check the `find_duplicate_directories` signature and the auto-keep section: Good. Now I have a clear picture. I need to:
 1. Add `--no-confirmation` to `Args` in `main.rs`
 2. Pass it through to `find_duplicate_directories`
-3. In the confirmation loop, skip the `[y/N]` prompt when `no_confirmation` is true AND `auto_keep` was set by canon 
+3. In the confirmation loop, skip the `[y/N]` prompt when `no_confirmation` is true AND `auto_keep` was set by canon Let me read the current state of both files first to get exact strings: Now I have exact context. Let me also check the function signature location: Now I have everything. Let me make all three edits: Now I need to check if the tests in `duplicates.rs` call `find_duplicate_directories` directly and need updating: Need to update both test call sites: All 22 tests pass. Here's what was changed:
+
+**`main.rs`**:
+- Added `no_confirmation: bool` field to `Args` (with `#[arg(long)]`)
+- Passed `args.no_confirmation` as the 4th argument to `find_duplicate_directories`
+
+**`duplicates.rs`**:
+- Added `no_confirmation: bool` parameter to `find_duplicate_directories`
+- Replaced the unconditional `[y/N]` prompt with a check: if `no_confirmation && auto_keep.is_some()`, print `"Deleting '...' (--no-confirmation)"` and proceed; otherwise show the prompt as before
+- Updated both test call sites to pass `false` for `no_confirmation`
+
+Usage: `deduplifier --delete --canon /path/to/canon --no-confirmation /path/to/scan` — when canon auto-selects a keeper, deletions proceed without any prompt.
+
+---
+
+_**User (2026-03-03 23:06Z)**_
+
+ok, i tried this:  ❯ cargo run -- --delete --canon /home/whit/Dropbox/photos/pictures2016/ /home/whit/Dropbox/photos/20100617_backup/                ... and got this duplicate set where one directory does not exist in either of the directories i passed in.  why did this happen:  Duplicate directories (hash: a71964f12fd237b5…, count: 2, size: 1027068797 bytes each):
+  [1] /home/whit/Dropbox/kemmey2016/family/Whit/Unfiled/Heathers Dell 20071227/Heather/Pictures/July Summer 2007 (1027068797 bytes)
+  [2] /home/whit/Dropbox/photos/pictures2016/by_topic/July Summer 2007 (1027068797 bytes)
+  Auto-selecting [2] as canonical: /home/whit/Dropbox/photos/pictures2016/by_topic/July Summer 2007
+  Keeping:  /home/whit/Dropbox/photos/pictures2016/by_topic/July Summer 2007
+  Will permanently delete:
+    - /home/whit/Dropbox/kemmey2016/family/Whit/Unfiled/Heathers Dell 20071227/Heather/Pictures/July Summer 2007
+  Confirm deletion of '/home/whit/Dropbox/kemmey2016/family/Whit/Unfiled/Heathers Dell 20071227/Heather/Pictures/July Summer 2007' [y/N] > 
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+This is expected behavior — the database is **persistent**. When you ran previous scans, `` was scanned and its hashes were stored in `deduplifier.db`. Now when you scan `pictures2016/` and `20100617_backup/`, the tool finds matches against everything already in the database, not just the directories you passed this time.
+
+In other words: the DB remembers old scans. Directory `[1]` was hashed in a previous session.
+
+There are a few ways to think about this:
+
+1. **It's working correctly** — you have a genuine duplicate across those two Dropbox locations, and the tool found it. The deletion prompt is appropriate.
+
+2. **If you want a fresh/isolated scan** — you can delete `deduplifier.db` (or point to a new one with `--database`) before running, so only the directories you pass this time are considered.
+
+3. **If you want the tool to only report duplicates *within* the scanned directories** — that would require a filter in the duplicate query, which is a design change.
+
+Which of those fits what you actually want? Most likely you want option 3 — only show a group as a duplicate if at least one member falls under a directory you scanned this run. Want me to add that behavior?
+
+---
+
+_**User (2026-03-03 23:14Z)**_
+
+we don't want option 2, because we really want to avoid hashing more than once because it's so time consuming.  so i want option 3 with a slight nuance:  i don't want to delete anything from the database unless it no longer exists on disk, but for a particular run, i only want to consider the directories i have passed in on the command line.  so i don't wan to only show a group as a duplicate if at least one member falls under a directory i scanned this run--all members of a set of duplicates should be under directories i scanned this run.  if in the whole database there is a set of five duplicates, but only three of them are in directories i scanned this run, i only want to see and operate on those three.  later i will run on a more inclusive set and deal with the additional dulicates, but working this way will allow me to clean pieces of the whole at a time so that i can slowly build the canon, making future clean up easier with the --no-confirmation setting (i.e., i can't really have duplicates in the canon directory, because i don't think we really have considered the case in which there are multiple choices in the canon, although we probably accidentally default to the first or something like that).  what do you think?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+This is a solid design. Let me think through the implications:
+
+**The filter you want**: in `find_duplicate_directories`, after fetching duplicate groups, only show a group if *all* members are under at least one of the scanned directories. Members outside the scanned set are simply hidden for this run — they stay in the DB untouched.
+
+**The canon-has-duplicates edge case you noticed**: you're right that we haven't handled it. If two copies of the same directory both live under `--canon`, `auto_keep` picks the first one (`position()` returns the lowest index), so one would get deleted. That's probably wrong — you'd want to skip the group entirely, or at minimum warn. We should handle that explicitly.
+
+**My proposed behavior**:
+1. Filter groups so only those where *all* members are under the scanned directories are shown
+2. If `--canon` is set and *multiple* members match canon, warn and skip that group (don't auto-delete within canon)
+
+**One question before I implement**: for the "all members under scanned directories" filter — should it be a prefix check against `args.directories` (the raw list you passed), or against `build_scan_list` output (which prepends canon)? I think it should be `args.directories` plus canon together (i.e., the full scan list), so that a directory that only appears in the DB because it's under canon is still included. Does that match your intent?
+
+---
+
+_**User (2026-03-03 23:23Z)**_
+
+yes, we should include the canon directory.  slight change on your suggestion though:  i don't want to only show a group if all members are under one of the scanned directories--i still want to show a group where at least two members are under one of the scanned directories, but i don't want to show any members in that group that are not under one of the scanned directories.  essentially, i want to ignore for now any duplicates not under a scanned directory, but still allow me to delete duplicates that are within the scanned directories.  so if there are 3, i'll end up keeping one and deleting two, but on future more inclusive run, i might find additional duplicates that weren't in the previous scan, at which time i can delete duplicates again.
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/duplicates.rs#1-1), lines 1 to 160</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/duplicates.rs#1-1), lines 1 to 160
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/duplicates.rs#160-160), lines 160 to 240</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/duplicates.rs#160-160), lines 160 to 240
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#90-90), lines 90 to 105</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#90-90), lines 90 to 105
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/duplicates.rs#240-240), lines 240 to 293</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/duplicates.rs#240-240), lines 240 to 293
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\npub fn find_duplicate_directories(\n    conn: &amp;Connection,\n    delete: bool,\n    canon: Option&lt;&amp;Path&gt;,\n    no_confirmation: bool,\n    scanned_dirs: &amp;[&amp;Path],\n) -&gt; Result&lt;()&gt; {\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "pub fn find_duplicate_directories(\n    conn: &amp;Connection,\n    delete: bool,\n    canon: Option&lt;&amp;Path&gt;,\n    no_confirmation: bool,\n    scanned_dirs: &amp;[&amp;Path],\n) -&gt; Result&lt;()&gt; {",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    // For each group, fetch its member paths upfront, then filter to only\n    // members that fall under one of the scanned directories.\n    // Groups with fewer than 2 members after filtering are skipped entirely —\n    // the out-of-scope members stay in the DB untouched for a future run.\n    let mut groups_with_paths: Vec&lt;(String, i64, i64, Vec&lt;(String, i64)&gt;)&gt; = Vec::new();\n    for (hash, count, max_size) in &amp;duplicate_groups {\n        let mut dir_stmt =\n            conn.prepare(\"SELECT path, size FROM directories WHERE hash = ?1 ORDER BY path\")?;\n        let all_dirs: Vec&lt;(String, i64)&gt; = dir_stmt\n            .query_map(params![hash], |row| {\n                Ok((row.get::&lt;_, String&gt;(0)?, row.get::&lt;_, i64&gt;(1)?))\n            })?\n            .collect::&lt;rusqlite::Result&lt;_&gt;&gt;()?;\n\n        // Keep only members that are under one of the scanned directories\n        let dirs: Vec&lt;(String, i64)&gt; = if scanned_dirs.is_empty() {\n            all_dirs\n        } else {\n            all_dirs\n                .into_iter()\n                .filter(|(p, _)| {\n                    let candidate = Path::new(p);\n                    scanned_dirs\n                        .iter()\n                        .any(|root| candidate.starts_with(root))\n                })\n                .collect()\n        };\n\n        if dirs.len() &gt;= 2 {\n            groups_with_paths.push((hash.clone(), *count, *max_size, dirs));\n        }\n    }\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    // For each group, fetch its member paths upfront, then filter to only\n    // members that fall under one of the scanned directories.\n    // Groups with fewer than 2 members after filtering are skipped entirely —\n    // the out-of-scope members stay in the DB untouched for a future run.\n    let mut groups_with_paths: Vec&lt;(String, i64, i64, Vec&lt;(String, i64)&gt;)&gt; = Vec::new();\n    for (hash, count, max_size) in &amp;duplicate_groups {\n        let mut dir_stmt =\n            conn.prepare(\"SELECT path, size FROM directories WHERE hash = ?1 ORDER BY path\")?;\n        let all_dirs: Vec&lt;(String, i64)&gt; = dir_stmt\n            .query_map(params![hash], |row| {\n                Ok((row.get::&lt;_, String&gt;(0)?, row.get::&lt;_, i64&gt;(1)?))\n            })?\n            .collect::&lt;rusqlite::Result&lt;_&gt;&gt;()?;\n\n        // Keep only members that are under one of the scanned directories\n        let dirs: Vec&lt;(String, i64)&gt; = if scanned_dirs.is_empty() {\n            all_dirs\n        } else {\n            all_dirs\n                .into_iter()\n                .filter(|(p, _)| {\n                    let candidate = Path::new(p);\n                    scanned_dirs\n                        .iter()\n                        .any(|root| candidate.starts_with(root))\n                })\n                .collect()\n        };\n\n        if dirs.len() &gt;= 2 {\n            groups_with_paths.push((hash.clone(), *count, *max_size, dirs));\n        }\n    }",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n        // Determine if --canon auto-selects a keeper\n        let auto_keep: Option&lt;usize&gt; = if let Some(canon_path) = canon {\n            dirs.iter()\n                .position(|(p, _)| Path::new(p).starts_with(canon_path))\n        } else {\n            None\n        };\n\n        // If multiple members are under canon, we can't safely auto-select —\n        // deleting within canon would defeat its purpose.\n        if let Some(canon_path) = canon {\n            let canon_count = dirs\n                .iter()\n                .filter(|(p, _)| Path::new(p).starts_with(canon_path))\n                .count();\n            if canon_count &gt; 1 {\n                println!(\n                    \"  Warning: {} members are under --canon ({}); skipping this group.\",\n                    canon_count,\n                    canon_path.display()\n                );\n                println!();\n                continue;\n            }\n        }\n\n        let keep_idx: usize = if let Some(idx) = auto_keep {\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "        // Determine if --canon auto-selects a keeper\n        let auto_keep: Option&lt;usize&gt; = if let Some(canon_path) = canon {\n            dirs.iter()\n                .position(|(p, _)| Path::new(p).starts_with(canon_path))\n        } else {\n            None\n        };\n\n        // If multiple members are under canon, we can't safely auto-select —\n        // deleting within canon would defeat its purpose.\n        if let Some(canon_path) = canon {\n            let canon_count = dirs\n                .iter()\n                .filter(|(p, _)| Path::new(p).starts_with(canon_path))\n                .count();\n            if canon_count &gt; 1 {\n                println!(\n                    \"  Warning: {} members are under --canon ({}); skipping this group.\",\n                    canon_count,\n                    canon_path.display()\n                );\n                println!();\n                continue;\n            }\n        }\n\n        let keep_idx: usize = if let Some(idx) = auto_keep {",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    println!(\"\\n=== Finding duplicate directories ===\");\n    let scanned_paths: Vec&lt;&amp;Path&gt; = all_directories.iter().map(|p| p.as_path()).collect();\n    find_duplicate_directories(\n        &amp;conn,\n        args.delete,\n        args.canon.as_deref(),\n        args.no_confirmation,\n        &amp;scanned_paths,\n    )?;\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    println!(\"\\n=== Finding duplicate directories ===\");\n    let scanned_paths: Vec&lt;&amp;Path&gt; = all_directories.iter().map(|p| p.as_path()).collect();\n    find_duplicate_directories(\n        &amp;conn,\n        args.delete,\n        args.canon.as_deref(),\n        args.no_confirmation,\n        &amp;scanned_paths,\n    )?;",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    #[test]\n    fn test_find_duplicate_dirs_none() {\n        let conn = open_test_db();\n        find_duplicate_directories(&amp;conn, false, None, false, &amp;[]).unwrap();\n    }\n\n    #[test]\n    fn test_find_duplicate_dirs_detects_duplicates() {\n        let conn = open_test_db();\n        // Insert two directories with the same non-empty hash\n        conn.execute_batch(\n            \"INSERT INTO directories VALUES ('/a/photos', 'deadbeef01234567', 1024);\n             INSERT INTO directories VALUES ('/b/photos', 'deadbeef01234567', 1024);\",\n        )\n        .unwrap();\n        // delete=false so no interactive prompt is triggered.\n        // Empty scanned_dirs means no filtering — both members are visible.\n        find_duplicate_directories(&amp;conn, false, None, false, &amp;[]).unwrap();\n    }\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    #[test]\n    fn test_find_duplicate_dirs_none() {\n        let conn = open_test_db();\n        find_duplicate_directories(&amp;conn, false, None, false, &amp;[]).unwrap();\n    }\n\n    #[test]\n    fn test_find_duplicate_dirs_detects_duplicates() {\n        let conn = open_test_db();\n        // Insert two directories with the same non-empty hash\n        conn.execute_batch(\n            \"INSERT INTO directories VALUES ('/a/photos', 'deadbeef01234567', 1024);\n             INSERT INTO directories VALUES ('/b/photos', 'deadbeef01234567', 1024);\",\n        )\n        .unwrap();\n        // delete=false so no interactive prompt is triggered.\n        // Empty scanned_dirs means no filtering — both members are visible.\n        find_duplicate_directories(&amp;conn, false, None, false, &amp;[]).unwrap();\n    }",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "b68eb98e-368a-4aaa-a817-fe5775a28db7",
+  "terminalCommandId": "tool-0d2f6b84-7a3c-487d-93bf-a83f7d7eac0a",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\nuse std::path::{Path, PathBuf};\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "use std::path::{Path, PathBuf};",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "df781acc-dce3-4160-94d1-eaf03917e9c8",
+  "terminalCommandId": "tool-7df23be1-23ec-42ce-980b-1fbab0135842",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Got it. So the logic is:
+
+1. For each duplicate group, **filter the member list** to only those under a scanned directory
+2. If the filtered list has **fewer than 2 members**, skip the group entirely (nothing to do)
+3. If 2+ members remain, show and operate on only those members
+
+And the canon-within-canon fix still applies: if after filtering, 2+ members are under canon, warn and skip.
+
+Let me read the current state of the relevant code before editing: Now I have the full picture. The changes needed are:
+
+1. Add a `scanned_dirs: &[&Path]` parameter to `find_duplicate_directories`
+2. After fetching each group's members, filter them to only those under a scanned dir
+3. If fewer than 2 remain after filtering, skip the group
+4. If 2+ members match canon, warn and skip
+5. Update the `count` display to reflect filtered members
+6. Update the call sites in `main.rs` and the tests Now I'll make all the changes at once: Now add the member-filtering logic right after each group's `dirs` are fetched, inside the `groups_with_paths` build loop: Now add the canon-within-canon guard in the deletion section, right after `auto_keep` is determined: Now update `main.rs` to pass `scanned_dirs`: Now update the two test call sites in `duplicates.rs`: All 22 pass. Here's a summary of what changed:
+
+**Member filtering** (`duplicates.rs`): After fetching a group's full member list from the DB, it filters to only members whose path starts with one of the `scanned_dirs`. If fewer than 2 survive, the group is silently skipped — the other members stay in the DB for a future more-inclusive run.
+
+**Canon-within-canon guard** (`duplicates.rs`): If `--canon` is set and 2 or more of the *filtered* members are under it, the group is skipped with a warning rather than deleting within your canon.
+
+**`main.rs`**: Builds `scanned_paths` from `all_directories` (which already includes canon via `build_scan_list`) and passes it through.
+
+**Empty `scanned_dirs` in tests**: Passing `&[]` disables filtering, so existing tests see all members and continue to work unchanged.
+
+---
+
+_**User (2026-03-03 23:56Z)**_
+
+with respect to the canon-within-canon guard--I'd like this to apply only for --no-confirmation deletions.  if we are individually approving deletions, it still fine for me to select one to keep, and it's fine if the default is determined arbitrarily as long as it's one of the canon options and i can override it
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/duplicates.rs#160-160), lines 160 to 210</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/duplicates.rs#160-160), lines 160 to 210
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n        // If --no-confirmation is set and multiple members are under canon, we can't\n        // safely auto-select — deleting within canon silently would defeat its purpose.\n        // When confirming individually, the user can handle it themselves.\n        if no_confirmation {\n            if let Some(canon_path) = canon {\n                let canon_count = dirs\n                    .iter()\n                    .filter(|(p, _)| Path::new(p).starts_with(canon_path))\n                    .count();\n                if canon_count &gt; 1 {\n                    println!(\n                        \"  Warning: {} members are under --canon ({}); skipping this group.\",\n                        canon_count,\n                        canon_path.display()\n                    );\n                    println!();\n                    continue;\n                }\n            }\n        }\n\n        let keep_idx: usize = if let Some(idx) = auto_keep {\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "        // If --no-confirmation is set and multiple members are under canon, we can't\n        // safely auto-select — deleting within canon silently would defeat its purpose.\n        // When confirming individually, the user can handle it themselves.\n        if no_confirmation {\n            if let Some(canon_path) = canon {\n                let canon_count = dirs\n                    .iter()\n                    .filter(|(p, _)| Path::new(p).starts_with(canon_path))\n                    .count();\n                if canon_count &gt; 1 {\n                    println!(\n                        \"  Warning: {} members are under --canon ({}); skipping this group.\",\n                        canon_count,\n                        canon_path.display()\n                    );\n                    println!();\n                    continue;\n                }\n            }\n        }\n\n        let keep_idx: usize = if let Some(idx) = auto_keep {",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "4c350aea-bb3b-4bc9-af9a-62748ddb385a",
+  "terminalCommandId": "tool-eb12e923-ec17-451b-8a8b-21cba376f702",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Good point. The guard only needs to protect against *silent* bulk deletion within canon. When the user is confirming each deletion individually, they can handle it themselves. 
 
 ---
 
