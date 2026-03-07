@@ -293,39 +293,51 @@ fn merge_into(pair: &SimilarPair, keep_path: &str, discard_path: &str) -> Result
         &pair.only_in_a
     };
 
+    // Copy files only in discard into keep
     for (rel, src_abs) in only_in_discard {
         let dst_abs = format!("{}/{}", keep_path, rel);
-        let dst_path = Path::new(&dst_abs);
-        if let Some(parent) = dst_path.parent() {
+        if let Some(parent) = Path::new(&dst_abs).parent() {
             fs::create_dir_all(parent)?;
         }
         fs::copy(src_abs, &dst_abs)?;
-        println!("    Copied: {} -> {}", src_abs, dst_abs);
+        println!("    Copied into keep: {} -> {}", src_abs, dst_abs);
         copied += 1;
     }
 
+    // Copy files only in keep into discard
+    let only_in_keep: &[(String, String)] = if discard_path == pair.b.path {
+        &pair.only_in_a
+    } else {
+        &pair.only_in_b
+    };
+    for (rel, src_abs) in only_in_keep {
+        let dst_abs = format!("{}/{}", discard_path, rel);
+        if let Some(parent) = Path::new(&dst_abs).parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(src_abs, &dst_abs)?;
+        println!("    Copied into discard: {} -> {}", src_abs, dst_abs);
+        copied += 1;
+    }
+
+    // Conflicts: propagate the newer version to both sides
     for (rel, _hash_a, _hash_b, mod_a, mod_b) in &pair.conflicts {
-        let (src_abs, dst_abs) = if discard_path == pair.b.path {
-            if mod_b > mod_a {
-                (
-                    format!("{}/{}", pair.b.path, rel),
-                    format!("{}/{}", pair.a.path, rel),
-                )
-            } else {
-                continue;
-            }
+        let (newer_path, older_path) = if mod_a >= mod_b {
+            (
+                format!("{}/{}", pair.a.path, rel),
+                format!("{}/{}", pair.b.path, rel),
+            )
         } else {
-            if mod_a > mod_b {
-                (
-                    format!("{}/{}", pair.a.path, rel),
-                    format!("{}/{}", pair.b.path, rel),
-                )
-            } else {
-                continue;
-            }
+            (
+                format!("{}/{}", pair.b.path, rel),
+                format!("{}/{}", pair.a.path, rel),
+            )
         };
-        fs::copy(&src_abs, &dst_abs)?;
-        println!("    Updated (newer): {} -> {}", src_abs, dst_abs);
+        fs::copy(&newer_path, &older_path)?;
+        println!(
+            "    Synced newer -> older: {} -> {}",
+            newer_path, older_path
+        );
         copied += 1;
     }
 
@@ -591,15 +603,24 @@ pub fn find_similar_directories(
             }
         }
 
-        let files_to_copy = pair.only_in_a.len().max(pair.only_in_b.len())
-            + pair
-                .conflicts
-                .iter()
-                .filter(|(_, _, _, ma, mb)| ma != mb)
-                .count();
+        // Files that will be written:
+        // - files only in discard → copied into keep
+        // - files only in keep → copied into discard
+        // - all conflicts → newer version copied to the older side (1 write each)
+        let only_in_discard_count = if discard_path == pair.b.path {
+            pair.only_in_b.len()
+        } else {
+            pair.only_in_a.len()
+        };
+        let only_in_keep_count = if discard_path == pair.b.path {
+            pair.only_in_a.len()
+        } else {
+            pair.only_in_b.len()
+        };
+        let files_to_copy = only_in_discard_count + only_in_keep_count + pair.conflicts.len();
         println!(
-            "  Will copy up to {} file(s) into '{}', then '{}' will be a true duplicate.",
-            files_to_copy, keep_path, discard_path
+            "  Will copy {} file(s) to make both sides identical, then '{}' will be a true duplicate.",
+            files_to_copy, discard_path
         );
         print!("  Proceed with merge? [y/N] > ");
         io::stdout().flush()?;
