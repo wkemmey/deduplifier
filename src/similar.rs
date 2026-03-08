@@ -281,63 +281,163 @@ fn walk_up_similar_mem(
     (path_a, path_b)
 }
 
-/// Perform the merge: copy files that are only in `src` into `dst`, and for
-/// conflicts keep the newer file by copying it over the older.
+enum ConflictResolution {
+    KeepOld,
+    KeepNew,
+    AskPerFile,
+}
+
+/// Format a Unix timestamp (seconds) as a human-readable date/time string.
+fn fmt_mtime(secs: i64) -> String {
+    // Use chrono if available; for now format with basic math to avoid new deps.
+    // secs since Unix epoch → approximate YYYY-MM-DD HH:MM
+    let secs = secs as u64;
+    // Days since epoch
+    let days = secs / 86400;
+    let rem = secs % 86400;
+    let hh = rem / 3600;
+    let mm = (rem % 3600) / 60;
+    // Gregorian calendar approximation
+    let mut y = 1970u64;
+    let mut d = days;
+    loop {
+        let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+        let days_in_year = if leap { 366 } else { 365 };
+        if d < days_in_year {
+            break;
+        }
+        d -= days_in_year;
+        y += 1;
+    }
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let month_days: [u64; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let mut month = 0usize;
+    let mut day = d;
+    for (i, &md) in month_days.iter().enumerate() {
+        if day < md {
+            month = i + 1;
+            break;
+        }
+        day -= md;
+    }
+    format!("{:04}-{:02}-{:02} {:02}:{:02}", y, month, day + 1, hh, mm)
+}
+
+/// Perform the merge: copy files that are only in one side to the other side,
+/// and for conflicts apply the given resolution strategy.
 /// Returns the number of files copied.
-fn merge_into(pair: &SimilarPair, keep_path: &str, discard_path: &str) -> Result<usize> {
+fn merge_into(
+    pair: &SimilarPair,
+    resolution: ConflictResolution,
+    stdin: &io::Stdin,
+) -> Result<usize> {
     let mut copied = 0;
 
-    let only_in_discard: &[(String, String)] = if discard_path == pair.b.path {
-        &pair.only_in_b
-    } else {
-        &pair.only_in_a
-    };
-
-    // Copy files only in discard into keep
-    for (rel, src_abs) in only_in_discard {
-        let dst_abs = format!("{}/{}", keep_path, rel);
+    // Files only in A → copy into B
+    for (rel, src_abs) in &pair.only_in_a {
+        let dst_abs = format!("{}/{}", pair.b.path, rel);
         if let Some(parent) = Path::new(&dst_abs).parent() {
             fs::create_dir_all(parent)?;
         }
         fs::copy(src_abs, &dst_abs)?;
-        println!("    Copied into keep: {} -> {}", src_abs, dst_abs);
+        println!("    Copied only-in-A into B: {}", rel);
         copied += 1;
     }
 
-    // Copy files only in keep into discard
-    let only_in_keep: &[(String, String)] = if discard_path == pair.b.path {
-        &pair.only_in_a
-    } else {
-        &pair.only_in_b
-    };
-    for (rel, src_abs) in only_in_keep {
-        let dst_abs = format!("{}/{}", discard_path, rel);
+    // Files only in B → copy into A
+    for (rel, src_abs) in &pair.only_in_b {
+        let dst_abs = format!("{}/{}", pair.a.path, rel);
         if let Some(parent) = Path::new(&dst_abs).parent() {
             fs::create_dir_all(parent)?;
         }
         fs::copy(src_abs, &dst_abs)?;
-        println!("    Copied into discard: {} -> {}", src_abs, dst_abs);
+        println!("    Copied only-in-B into A: {}", rel);
         copied += 1;
     }
 
-    // Conflicts: propagate the newer version to both sides
+    // Conflicts: apply resolution strategy
+    // blanket overrides per-file choice when user picks [4] or [5]
+    let mut blanket: Option<ConflictResolution> = None;
+
     for (rel, _hash_a, _hash_b, mod_a, mod_b) in &pair.conflicts {
-        let (newer_path, older_path) = if mod_a >= mod_b {
-            (
-                format!("{}/{}", pair.a.path, rel),
-                format!("{}/{}", pair.b.path, rel),
-            )
+        let path_a = format!("{}/{}", pair.a.path, rel);
+        let path_b = format!("{}/{}", pair.b.path, rel);
+
+        // Determine which path is older/newer
+        let (older_path, newer_path) = if mod_a <= mod_b {
+            (&path_a, &path_b)
         } else {
-            (
-                format!("{}/{}", pair.b.path, rel),
-                format!("{}/{}", pair.a.path, rel),
-            )
+            (&path_b, &path_a)
         };
-        fs::copy(&newer_path, &older_path)?;
-        println!(
-            "    Synced newer -> older: {} -> {}",
-            newer_path, older_path
-        );
+
+        let keep_newer = match &blanket {
+            Some(ConflictResolution::KeepOld) => false,
+            Some(ConflictResolution::KeepNew) => true,
+            Some(ConflictResolution::AskPerFile) => unreachable!(),
+            None => {
+                match &resolution {
+                    ConflictResolution::KeepOld => false,
+                    ConflictResolution::KeepNew => true,
+                    ConflictResolution::AskPerFile => {
+                        // Show file info and prompt
+                        let fname = Path::new(rel)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(rel.as_str());
+                        let (date_old, date_new, side_old, side_new) = if mod_a <= mod_b {
+                            (fmt_mtime(*mod_a), fmt_mtime(*mod_b), "A", "B")
+                        } else {
+                            (fmt_mtime(*mod_b), fmt_mtime(*mod_a), "B", "A")
+                        };
+                        println!(
+                            "    {} (old [{}]: {}  new [{}]: {})",
+                            fname, side_old, date_old, side_new, date_new
+                        );
+                        loop {
+                            print!("    [1] keep old  [2] keep new  [4] keep all old  [5] keep all new > ");
+                            io::stdout().flush()?;
+                            let mut line = String::new();
+                            stdin.lock().read_line(&mut line)?;
+                            match line.trim() {
+                                "1" => break false,
+                                "2" => break true,
+                                "4" => {
+                                    blanket = Some(ConflictResolution::KeepOld);
+                                    break false;
+                                }
+                                "5" => {
+                                    blanket = Some(ConflictResolution::KeepNew);
+                                    break true;
+                                }
+                                _ => println!("    Please enter 1, 2, 4, or 5."),
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        // Copy winning version to the losing side
+        if keep_newer {
+            fs::copy(newer_path, older_path)?;
+            println!("    Kept newer: {}", rel);
+        } else {
+            fs::copy(older_path, newer_path)?;
+            println!("    Kept older: {}", rel);
+        }
         copied += 1;
     }
 
@@ -544,14 +644,26 @@ pub fn find_similar_directories(
             }
         }
 
+        let newer_in_a = pair
+            .conflicts
+            .iter()
+            .filter(|(_, _, _, ma, mb)| ma >= mb)
+            .count();
+        let newer_in_b = pair.conflicts.len() - newer_in_a;
         if !pair.conflicts.is_empty() {
             println!(
-                "  Conflicts (same path, different content) ({}):",
-                pair.conflicts.len()
+                "  Conflicts ({} total — {} newer in A, {} newer in B):",
+                pair.conflicts.len(),
+                newer_in_a,
+                newer_in_b,
             );
             for (rel, _, _, mod_a, mod_b) in pair.conflicts.iter().take(5) {
-                let newer = if mod_a >= mod_b { "A" } else { "B" };
-                println!("    ~ {} (newer: {})", rel, newer);
+                let (newer, date) = if mod_a >= mod_b {
+                    ("A", fmt_mtime(*mod_a))
+                } else {
+                    ("B", fmt_mtime(*mod_b))
+                };
+                println!("    ~ {} (newer [{}]: {})", rel, newer, date);
             }
             if pair.conflicts.len() > 5 {
                 println!("    ... and {} more", pair.conflicts.len() - 5);
@@ -563,84 +675,52 @@ pub fn find_similar_directories(
             continue;
         }
 
-        let canon_a = canon
-            .map(|c| Path::new(&pair.a.path).starts_with(c))
-            .unwrap_or(false);
-        let canon_b = canon
-            .map(|c| Path::new(&pair.b.path).starts_with(c))
-            .unwrap_or(false);
+        let files_to_copy = pair.only_in_a.len() + pair.only_in_b.len() + pair.conflicts.len();
+        println!(
+            "  Will copy up to {} file(s) to make both sides identical.",
+            files_to_copy
+        );
+        println!(
+            "    [A] {} ({} files, {} exclusive, {} newer in conflicts)",
+            pair.a.path,
+            pair.a.file_count,
+            pair.only_in_a.len(),
+            newer_in_a,
+        );
+        println!(
+            "    [B] {} ({} files, {} exclusive, {} newer in conflicts)",
+            pair.b.path,
+            pair.b.file_count,
+            pair.only_in_b.len(),
+            newer_in_b,
+        );
 
-        let keep_path: String;
-        let discard_path: String;
-
-        if canon_a && !canon_b {
-            println!("  Merging into A (canon): {}", pair.a.path);
-            keep_path = pair.a.path.clone();
-            discard_path = pair.b.path.clone();
-        } else if canon_b && !canon_a {
-            println!("  Merging into B (canon): {}", pair.b.path);
-            keep_path = pair.b.path.clone();
-            discard_path = pair.a.path.clone();
-        } else {
-            print!("  Merge which into which? ([A] keep A, [B] keep B, [s] skip): ");
+        let resolution_opt: Option<ConflictResolution> = loop {
+            print!("  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip > ");
             io::stdout().flush()?;
             let mut line = String::new();
             stdin.lock().read_line(&mut line)?;
             match line.trim().to_ascii_lowercase().as_str() {
-                "a" => {
-                    keep_path = pair.a.path.clone();
-                    discard_path = pair.b.path.clone();
-                }
-                "b" => {
-                    keep_path = pair.b.path.clone();
-                    discard_path = pair.a.path.clone();
-                }
-                _ => {
-                    println!("  Skipped.");
-                    println!();
-                    continue;
-                }
+                "1" => break Some(ConflictResolution::KeepOld),
+                "2" => break Some(ConflictResolution::KeepNew),
+                "3" => break Some(ConflictResolution::AskPerFile),
+                "s" => break None,
+                _ => println!("  Please enter 1, 2, 3, or s."),
             }
-        }
-
-        // Files that will be written:
-        // - files only in discard → copied into keep
-        // - files only in keep → copied into discard
-        // - all conflicts → newer version copied to the older side (1 write each)
-        let only_in_discard_count = if discard_path == pair.b.path {
-            pair.only_in_b.len()
-        } else {
-            pair.only_in_a.len()
         };
-        let only_in_keep_count = if discard_path == pair.b.path {
-            pair.only_in_a.len()
-        } else {
-            pair.only_in_b.len()
-        };
-        let files_to_copy = only_in_discard_count + only_in_keep_count + pair.conflicts.len();
-        println!(
-            "  Will copy {} file(s) to make both sides identical, then '{}' will be a true duplicate.",
-            files_to_copy, discard_path
-        );
-        print!("  Proceed with merge? [y/N] > ");
-        io::stdout().flush()?;
-        let mut confirmation = String::new();
-        stdin.lock().read_line(&mut confirmation)?;
-        if !confirmation.trim().eq_ignore_ascii_case("y") {
-            println!("  Skipped.");
-            println!();
-            continue;
-        }
 
-        let copied = merge_into(pair, &keep_path, &discard_path)?;
-        println!(
-            "  Merge complete: {} file(s) copied into '{}'.",
-            copied, keep_path
-        );
-        println!(
-            "  Note: re-run without --similarity to detect '{}' as a duplicate and delete it.",
-            discard_path
-        );
+        let resolution = match resolution_opt {
+            None => {
+                println!("  Skipped.");
+                println!();
+                continue;
+            }
+            Some(r) => r,
+        };
+
+        let copied = merge_into(pair, resolution, &stdin)?;
+        println!("  Merge complete: {} file(s) copied.", copied);
+        println!("  Note: re-run without --similarity to detect exact duplicates and delete them.");
         println!();
     }
 

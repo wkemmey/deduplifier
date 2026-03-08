@@ -16,9 +16,3 @@ rm -rf **/{hpothb*.tif,hpothb*.dat}
 
 
 
-
-when merging, asking A or B doesn't really make much sense, because gonna keep both and make them identical.  would it be better to ask keep old or new?  or always assume new and just ask y/N?
-
-will it find more than 2 similar directories?
-
-i think for photos i often want to keep the older--unedited, unrotated, etc

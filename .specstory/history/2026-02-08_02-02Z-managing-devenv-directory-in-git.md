@@ -10649,3 +10649,688 @@ Yes, your reasoning is correct. Let me trace through the code to confirm: Confir
 
 ---
 
+_**User (2026-03-08 21:49Z)**_
+
+when merging, asking keep A or B doesn't really make sense, because we are going to keep both and make them identical.  let's instead have four options [1] keep old [2] keep new [3] ask [s] skip.  if they say ask, lets ask the same thing file by file in the directory.  does this seem sensible?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Yes, that's much clearer. The keep/discard framing was misleading since merge doesn't delete anything. Let me think through the four options:
+
+- **[1] keep old** — for every conflict, the older file wins; copy it to the side that has the newer version
+- **[2] keep new** — for every conflict, the newer file wins (current default behavior)
+- **[3] ask** — for each conflict, show both modification times and ask which to keep
+- **[s] skip** — do nothing to this pair
+
+For "only-in-one-side" files (not conflicts), the behavior is unambiguous regardless of choice — they always get copied to the side that's missing them, since there's nothing to resolve. That makes sense across all four options.
+
+One thing to clarify for **[3] ask**: if there are 198 conflicts, that's 198 individual prompts. Should we show the filename and the two dates, and let them choose per-file? And should there be a "keep new for rest" / "keep old for rest" escape hatch mid-way through, or just y/n per file with `s` to skip that individual file?
+
+My suggestion: show filename + both dates, offer `[o]ld / [n]ew / [s]kip this file` per conflict, with an additional `[o]ld all / [n]ew all` to apply a blanket decision to the remaining conflicts. That way [3] doesn't become a 198-click nightmare if they change their mind mid-stream.
+
+Does that sound right, or do you want something simpler?
+
+---
+
+_**User (2026-03-08 21:58Z)**_
+
+for [3] ask, have four choices, 1 - keep old, 2 - keep new, 4 - keep all old, 5 - keep all new.  the numbers are so i can use the numpad.  there shouldn't be a skip option when going file by file, or we will end up not making the directories duplicate.  worst case, i can exit the program
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#283-283), lines 283 to 360</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#283-283), lines 283 to 360
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#540-540), lines 540 to 660</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#540-540), lines 540 to 660
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#283-283), lines 283 to 360</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#283-283), lines 283 to 360
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\nenum ConflictResolution {\n    KeepOld,\n    KeepNew,\n    AskPerFile,\n}\n\n/// Format a Unix timestamp (seconds) as a human-readable date/time string.\nfn fmt_mtime(secs: i64) -&gt; String {\n    // Use chrono if available; for now format with basic math to avoid new deps.\n    // secs since Unix epoch → approximate YYYY-MM-DD HH:MM\n    let secs = secs as u64;\n    // Days since epoch\n    let days = secs / 86400;\n    let rem = secs % 86400;\n    let hh = rem / 3600;\n    let mm = (rem % 3600) / 60;\n    // Gregorian calendar approximation\n    let mut y = 1970u64;\n    let mut d = days;\n    loop {\n        let leap = (y % 4 == 0 &amp;&amp; y % 100 != 0) || y % 400 == 0;\n        let days_in_year = if leap { 366 } else { 365 };\n        if d &lt; days_in_year {\n            break;\n        }\n        d -= days_in_year;\n        y += 1;\n    }\n    let leap = (y % 4 == 0 &amp;&amp; y % 100 != 0) || y % 400 == 0;\n    let month_days: [u64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];\n    let mut month = 0usize;\n    let mut day = d;\n    for (i, &amp;md) in month_days.iter().enumerate() {\n        if day &lt; md {\n            month = i + 1;\n            break;\n        }\n        day -= md;\n    }\n    format!(\"{:04}-{:02}-{:02} {:02}:{:02}\", y, month, day + 1, hh, mm)\n}\n\n/// Perform the merge: copy files that are only in one side to the other side,\n/// and for conflicts apply the given resolution strategy.\n/// Returns the number of files copied.\nfn merge_into(pair: &amp;SimilarPair, resolution: ConflictResolution, stdin: &amp;io::Stdin) -&gt; Result&lt;usize&gt; {\n    let mut copied = 0;\n\n    // Files only in A → copy into B\n    for (rel, src_abs) in &amp;pair.only_in_a {\n        let dst_abs = format!(\"{}/{}\", pair.b.path, rel);\n        if let Some(parent) = Path::new(&amp;dst_abs).parent() {\n            fs::create_dir_all(parent)?;\n        }\n        fs::copy(src_abs, &amp;dst_abs)?;\n        println!(\"    Copied only-in-A into B: {}\", rel);\n        copied += 1;\n    }\n\n    // Files only in B → copy into A\n    for (rel, src_abs) in &amp;pair.only_in_b {\n        let dst_abs = format!(\"{}/{}\", pair.a.path, rel);\n        if let Some(parent) = Path::new(&amp;dst_abs).parent() {\n            fs::create_dir_all(parent)?;\n        }\n        fs::copy(src_abs, &amp;dst_abs)?;\n        println!(\"    Copied only-in-B into A: {}\", rel);\n        copied += 1;\n    }\n\n    // Conflicts: apply resolution strategy\n    // blanket overrides per-file choice when user picks [4] or [5]\n    let mut blanket: Option&lt;ConflictResolution&gt; = None;\n\n    for (rel, _hash_a, _hash_b, mod_a, mod_b) in &amp;pair.conflicts {\n        let path_a = format!(\"{}/{}\", pair.a.path, rel);\n        let path_b = format!(\"{}/{}\", pair.b.path, rel);\n\n        // Determine which path is older/newer\n        let (older_path, newer_path) = if mod_a &lt;= mod_b {\n            (&amp;path_a, &amp;path_b)\n        } else {\n            (&amp;path_b, &amp;path_a)\n        };\n\n        let keep_newer = match &amp;blanket {\n            Some(ConflictResolution::KeepOld) =&gt; false,\n            Some(ConflictResolution::KeepNew) =&gt; true,\n            Some(ConflictResolution::AskPerFile) =&gt; unreachable!(),\n            None =&gt; match &amp;resolution {\n                ConflictResolution::KeepOld =&gt; false,\n                ConflictResolution::KeepNew =&gt; true,\n                ConflictResolution::AskPerFile =&gt; {\n                    // Show file info and prompt\n                    let fname = Path::new(rel)\n                        .file_name()\n                        .and_then(|n| n.to_str())\n                        .unwrap_or(rel.as_str());\n                    let (date_a, date_b) = if mod_a &lt;= mod_b {\n                        (fmt_mtime(*mod_a), fmt_mtime(*mod_b))\n                    } else {\n                        (fmt_mtime(*mod_a), fmt_mtime(*mod_b))\n                    };\n                    println!(\"    {} (old: {}  new: {})\", fname, date_a, date_b);\n                    loop {\n                        print!(\"    [1] keep old  [2] keep new  [4] keep all old  [5] keep all new &gt; \");\n                        io::stdout().flush()?;\n                        let mut line = String::new();\n                        stdin.lock().read_line(&amp;mut line)?;\n                        match line.trim() {\n                            \"1\" =&gt; break false,\n                            \"2\" =&gt; break true,\n                            \"4\" =&gt; {\n                                blanket = Some(ConflictResolution::KeepOld);\n                                break false;\n                            }\n                            \"5\" =&gt; {\n                                blanket = Some(ConflictResolution::KeepNew);\n                                break true;\n                            }\n                            _ =&gt; println!(\"    Please enter 1, 2, 4, or 5.\"),\n                        }\n                    }\n                }\n            },\n        };\n\n        // Copy winning version to the losing side\n        if keep_newer {\n            fs::copy(newer_path, older_path)?;\n            println!(\"    Kept newer: {}\", rel);\n        } else {\n            fs::copy(older_path, newer_path)?;\n            println!(\"    Kept older: {}\", rel);\n        }\n        copied += 1;\n    }\n\n    Ok(copied)\n}\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "enum ConflictResolution {\n    KeepOld,\n    KeepNew,\n    AskPerFile,\n}\n\n/// Format a Unix timestamp (seconds) as a human-readable date/time string.\nfn fmt_mtime(secs: i64) -&gt; String {\n    // Use chrono if available; for now format with basic math to avoid new deps.\n    // secs since Unix epoch → approximate YYYY-MM-DD HH:MM\n    let secs = secs as u64;\n    // Days since epoch\n    let days = secs / 86400;\n    let rem = secs % 86400;\n    let hh = rem / 3600;\n    let mm = (rem % 3600) / 60;\n    // Gregorian calendar approximation\n    let mut y = 1970u64;\n    let mut d = days;\n    loop {\n        let leap = (y % 4 == 0 &amp;&amp; y % 100 != 0) || y % 400 == 0;\n        let days_in_year = if leap { 366 } else { 365 };\n        if d &lt; days_in_year {\n            break;\n        }\n        d -= days_in_year;\n        y += 1;\n    }\n    let leap = (y % 4 == 0 &amp;&amp; y % 100 != 0) || y % 400 == 0;\n    let month_days: [u64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];\n    let mut month = 0usize;\n    let mut day = d;\n    for (i, &amp;md) in month_days.iter().enumerate() {\n        if day &lt; md {\n            month = i + 1;\n            break;\n        }\n        day -= md;\n    }\n    format!(\"{:04}-{:02}-{:02} {:02}:{:02}\", y, month, day + 1, hh, mm)\n}\n\n/// Perform the merge: copy files that are only in one side to the other side,\n/// and for conflicts apply the given resolution strategy.\n/// Returns the number of files copied.\nfn merge_into(pair: &amp;SimilarPair, resolution: ConflictResolution, stdin: &amp;io::Stdin) -&gt; Result&lt;usize&gt; {\n    let mut copied = 0;\n\n    // Files only in A → copy into B\n    for (rel, src_abs) in &amp;pair.only_in_a {\n        let dst_abs = format!(\"{}/{}\", pair.b.path, rel);\n        if let Some(parent) = Path::new(&amp;dst_abs).parent() {\n            fs::create_dir_all(parent)?;\n        }\n        fs::copy(src_abs, &amp;dst_abs)?;\n        println!(\"    Copied only-in-A into B: {}\", rel);\n        copied += 1;\n    }\n\n    // Files only in B → copy into A\n    for (rel, src_abs) in &amp;pair.only_in_b {\n        let dst_abs = format!(\"{}/{}\", pair.a.path, rel);\n        if let Some(parent) = Path::new(&amp;dst_abs).parent() {\n            fs::create_dir_all(parent)?;\n        }\n        fs::copy(src_abs, &amp;dst_abs)?;\n        println!(\"    Copied only-in-B into A: {}\", rel);\n        copied += 1;\n    }\n\n    // Conflicts: apply resolution strategy\n    // blanket overrides per-file choice when user picks [4] or [5]\n    let mut blanket: Option&lt;ConflictResolution&gt; = None;\n\n    for (rel, _hash_a, _hash_b, mod_a, mod_b) in &amp;pair.conflicts {\n        let path_a = format!(\"{}/{}\", pair.a.path, rel);\n        let path_b = format!(\"{}/{}\", pair.b.path, rel);\n\n        // Determine which path is older/newer\n        let (older_path, newer_path) = if mod_a &lt;= mod_b {\n            (&amp;path_a, &amp;path_b)\n        } else {\n            (&amp;path_b, &amp;path_a)\n        };\n\n        let keep_newer = match &amp;blanket {\n            Some(ConflictResolution::KeepOld) =&gt; false,\n            Some(ConflictResolution::KeepNew) =&gt; true,\n            Some(ConflictResolution::AskPerFile) =&gt; unreachable!(),\n            None =&gt; match &amp;resolution {\n                ConflictResolution::KeepOld =&gt; false,\n                ConflictResolution::KeepNew =&gt; true,\n                ConflictResolution::AskPerFile =&gt; {\n                    // Show file info and prompt\n                    let fname = Path::new(rel)\n                        .file_name()\n                        .and_then(|n| n.to_str())\n                        .unwrap_or(rel.as_str());\n                    let (date_a, date_b) = if mod_a &lt;= mod_b {\n                        (fmt_mtime(*mod_a), fmt_mtime(*mod_b))\n                    } else {\n                        (fmt_mtime(*mod_a), fmt_mtime(*mod_b))\n                    };\n                    println!(\"    {} (old: {}  new: {})\", fname, date_a, date_b);\n                    loop {\n                        print!(\"    [1] keep old  [2] keep new  [4] keep all old  [5] keep all new &gt; \");\n                        io::stdout().flush()?;\n                        let mut line = String::new();\n                        stdin.lock().read_line(&amp;mut line)?;\n                        match line.trim() {\n                            \"1\" =&gt; break false,\n                            \"2\" =&gt; break true,\n                            \"4\" =&gt; {\n                                blanket = Some(ConflictResolution::KeepOld);\n                                break false;\n                            }\n                            \"5\" =&gt; {\n                                blanket = Some(ConflictResolution::KeepNew);\n                                break true;\n                            }\n                            _ =&gt; println!(\"    Please enter 1, 2, 4, or 5.\"),\n                        }\n                    }\n                }\n            },\n        };\n\n        // Copy winning version to the losing side\n        if keep_newer {\n            fs::copy(newer_path, older_path)?;\n            println!(\"    Kept newer: {}\", rel);\n        } else {\n            fs::copy(older_path, newer_path)?;\n            println!(\"    Kept older: {}\", rel);\n        }\n        copied += 1;\n    }\n\n    Ok(copied)\n}",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n        if !merge {\n            println!();\n            continue;\n        }\n\n        let files_to_copy = pair.only_in_a.len() + pair.only_in_b.len() + pair.conflicts.len();\n        println!(\n            \"  Will copy up to {} file(s) to make both sides identical.\",\n            files_to_copy\n        );\n\n        let resolution = loop {\n            print!(\"  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip &gt; \");\n            io::stdout().flush()?;\n            let mut line = String::new();\n            stdin.lock().read_line(&amp;mut line)?;\n            match line.trim().to_ascii_lowercase().as_str() {\n                \"1\" =&gt; break ConflictResolution::KeepOld,\n                \"2\" =&gt; break ConflictResolution::KeepNew,\n                \"3\" =&gt; break ConflictResolution::AskPerFile,\n                \"s\" =&gt; {\n                    println!(\"  Skipped.\");\n                    println!();\n                    break ConflictResolution::KeepNew; // value unused; we continue below\n                }\n                _ =&gt; println!(\"  Please enter 1, 2, 3, or s.\"),\n            }\n        };\n\n        // Check if user chose skip (re-read last input by checking printed \"Skipped.\")\n        // We need a cleaner approach: use an Option.\n        // Restructure: use a helper that returns Option&lt;ConflictResolution&gt;.\n        // Since the loop above already printed \"Skipped.\" and we can't break with different types,\n        // use a flag instead.\n        // (Replaced by the block below.)\n        let _ = resolution; // discard dummy value from loop above\n\n        let resolution_opt: Option&lt;ConflictResolution&gt; = loop {\n            print!(\"  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip &gt; \");\n            io::stdout().flush()?;\n            let mut line = String::new();\n            stdin.lock().read_line(&amp;mut line)?;\n            match line.trim().to_ascii_lowercase().as_str() {\n                \"1\" =&gt; break Some(ConflictResolution::KeepOld),\n                \"2\" =&gt; break Some(ConflictResolution::KeepNew),\n                \"3\" =&gt; break Some(ConflictResolution::AskPerFile),\n                \"s\" =&gt; break None,\n                _ =&gt; println!(\"  Please enter 1, 2, 3, or s.\"),\n            }\n        };\n\n        let resolution = match resolution_opt {\n            None =&gt; {\n                println!(\"  Skipped.\");\n                println!();\n                continue;\n            }\n            Some(r) =&gt; r,\n        };\n\n        let copied = merge_into(pair, resolution, &amp;stdin)?;\n        println!(\"  Merge complete: {} file(s) copied.\", copied);\n        println!(\n            \"  Note: re-run without --similarity to detect exact duplicates and delete them.\"\n        );\n        println!();\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "        if !merge {\n            println!();\n            continue;\n        }\n\n        let files_to_copy = pair.only_in_a.len() + pair.only_in_b.len() + pair.conflicts.len();\n        println!(\n            \"  Will copy up to {} file(s) to make both sides identical.\",\n            files_to_copy\n        );\n\n        let resolution = loop {\n            print!(\"  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip &gt; \");\n            io::stdout().flush()?;\n            let mut line = String::new();\n            stdin.lock().read_line(&amp;mut line)?;\n            match line.trim().to_ascii_lowercase().as_str() {\n                \"1\" =&gt; break ConflictResolution::KeepOld,\n                \"2\" =&gt; break ConflictResolution::KeepNew,\n                \"3\" =&gt; break ConflictResolution::AskPerFile,\n                \"s\" =&gt; {\n                    println!(\"  Skipped.\");\n                    println!();\n                    break ConflictResolution::KeepNew; // value unused; we continue below\n                }\n                _ =&gt; println!(\"  Please enter 1, 2, 3, or s.\"),\n            }\n        };\n\n        // Check if user chose skip (re-read last input by checking printed \"Skipped.\")\n        // We need a cleaner approach: use an Option.\n        // Restructure: use a helper that returns Option&lt;ConflictResolution&gt;.\n        // Since the loop above already printed \"Skipped.\" and we can't break with different types,\n        // use a flag instead.\n        // (Replaced by the block below.)\n        let _ = resolution; // discard dummy value from loop above\n\n        let resolution_opt: Option&lt;ConflictResolution&gt; = loop {\n            print!(\"  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip &gt; \");\n            io::stdout().flush()?;\n            let mut line = String::new();\n            stdin.lock().read_line(&amp;mut line)?;\n            match line.trim().to_ascii_lowercase().as_str() {\n                \"1\" =&gt; break Some(ConflictResolution::KeepOld),\n                \"2\" =&gt; break Some(ConflictResolution::KeepNew),\n                \"3\" =&gt; break Some(ConflictResolution::AskPerFile),\n                \"s\" =&gt; break None,\n                _ =&gt; println!(\"  Please enter 1, 2, 3, or s.\"),\n            }\n        };\n\n        let resolution = match resolution_opt {\n            None =&gt; {\n                println!(\"  Skipped.\");\n                println!();\n                continue;\n            }\n            Some(r) =&gt; r,\n        };\n\n        let copied = merge_into(pair, resolution, &amp;stdin)?;\n        println!(\"  Merge complete: {} file(s) copied.\", copied);\n        println!(\n            \"  Note: re-run without --similarity to detect exact duplicates and delete them.\"\n        );\n        println!();",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n        if !merge {\n            println!();\n            continue;\n        }\n\n        let files_to_copy = pair.only_in_a.len() + pair.only_in_b.len() + pair.conflicts.len();\n        println!(\n            \"  Will copy up to {} file(s) to make both sides identical.\",\n            files_to_copy\n        );\n\n        let resolution_opt: Option&lt;ConflictResolution&gt; = loop {\n            print!(\"  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip &gt; \");\n            io::stdout().flush()?;\n            let mut line = String::new();\n            stdin.lock().read_line(&amp;mut line)?;\n            match line.trim().to_ascii_lowercase().as_str() {\n                \"1\" =&gt; break Some(ConflictResolution::KeepOld),\n                \"2\" =&gt; break Some(ConflictResolution::KeepNew),\n                \"3\" =&gt; break Some(ConflictResolution::AskPerFile),\n                \"s\" =&gt; break None,\n                _ =&gt; println!(\"  Please enter 1, 2, 3, or s.\"),\n            }\n        };\n\n        let resolution = match resolution_opt {\n            None =&gt; {\n                println!(\"  Skipped.\");\n                println!();\n                continue;\n            }\n            Some(r) =&gt; r,\n        };\n\n        let copied = merge_into(pair, resolution, &amp;stdin)?;\n        println!(\"  Merge complete: {} file(s) copied.\", copied);\n        println!(\n            \"  Note: re-run without --similarity to detect exact duplicates and delete them.\"\n        );\n        println!();\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "        if !merge {\n            println!();\n            continue;\n        }\n\n        let files_to_copy = pair.only_in_a.len() + pair.only_in_b.len() + pair.conflicts.len();\n        println!(\n            \"  Will copy up to {} file(s) to make both sides identical.\",\n            files_to_copy\n        );\n\n        let resolution_opt: Option&lt;ConflictResolution&gt; = loop {\n            print!(\"  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip &gt; \");\n            io::stdout().flush()?;\n            let mut line = String::new();\n            stdin.lock().read_line(&amp;mut line)?;\n            match line.trim().to_ascii_lowercase().as_str() {\n                \"1\" =&gt; break Some(ConflictResolution::KeepOld),\n                \"2\" =&gt; break Some(ConflictResolution::KeepNew),\n                \"3\" =&gt; break Some(ConflictResolution::AskPerFile),\n                \"s\" =&gt; break None,\n                _ =&gt; println!(\"  Please enter 1, 2, 3, or s.\"),\n            }\n        };\n\n        let resolution = match resolution_opt {\n            None =&gt; {\n                println!(\"  Skipped.\");\n                println!();\n                continue;\n            }\n            Some(r) =&gt; r,\n        };\n\n        let copied = merge_into(pair, resolution, &amp;stdin)?;\n        println!(\"  Merge complete: {} file(s) copied.\", copied);\n        println!(\n            \"  Note: re-run without --similarity to detect exact duplicates and delete them.\"\n        );\n        println!();",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#340-340), lines 340 to 430</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#340-340), lines 340 to 430
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n                    let (date_old, date_new) = if mod_a &lt;= mod_b {\n                        (fmt_mtime(*mod_a), fmt_mtime(*mod_b))\n                    } else {\n                        (fmt_mtime(*mod_b), fmt_mtime(*mod_a))\n                    };\n                    println!(\"    {} (old: {}  new: {})\", fname, date_old, date_new);\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "                    let (date_old, date_new) = if mod_a &lt;= mod_b {\n                        (fmt_mtime(*mod_a), fmt_mtime(*mod_b))\n                    } else {\n                        (fmt_mtime(*mod_b), fmt_mtime(*mod_a))\n                    };\n                    println!(\"    {} (old: {}  new: {})\", fname, date_old, date_new);",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "a9bef0ae-5151-4372-87a8-af4d86b3c2d6",
+  "terminalCommandId": "tool-807e6ff6-b29d-4f60-a6d8-ab5e2ef8e890",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo build 2&gt;&amp;1",
+    "toolEdited": "cargo build 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "6db63207-21ac-4cfd-adbe-5798ace08dab",
+  "terminalCommandId": "tool-014fa5d2-ca0a-48c4-bf90-22541d4ba5b5",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Got it. Let me implement this. The prompt flow becomes:
+
+1. Top-level: `[1] keep old  [2] keep new  [3] ask file by file  [s] skip`
+2. Per-file (only reached via [3]): `[1] keep old  [2] keep new  [4] keep all old  [5] keep all new` Good, I have full context. Now I'll implement the new UI. Here's the plan:
+1. Add `ConflictResolution` enum
+2. Rewrite `merge_into` to accept it and handle per-file prompting
+3. Replace the prompt section in `find_similar_directories` Now replace the prompt section in `find_similar_directories`: That code has a messy double-loop artifact from me thinking mid-edit. Let me clean it up: Now let's also fix the `date_a`/`date_b` display in the per-file prompt — the current code redundantly computes dates without using A/B labeling. Let me also check there's an issue with the `mod_a <= mod_b` condition: I see the bug in date display — both branches of the `if mod_a <= mod_b` produce the same result. Let me fix it to actually show old/new dates correctly: Now build to check for compile errors: Clean build (just a pre-existing `canon` warning). Now run tests: All 26 tests pass. Here's a summary of what was implemented:
+
+**New merge conflict resolution UI:**
+
+Top-level prompt (replaces `[A]/[B]/[s]`):
+```
+Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip >
+```
+
+Per-file prompt (reached via `[3]`):
+```
+IMG_3700.JPG (old: 2009-01-05 16:17  new: 2009-01-05 17:17)
+[1] keep old  [2] keep new  [4] keep all old  [5] keep all new >
+```
+
+**Changes made:**
+
+- **`ConflictResolution` enum** — `KeepOld`, `KeepNew`, `AskPerFile`
+- **`fmt_mtime()`** — pure-Rust timestamp formatter (no new deps) to show human-readable dates
+- **`merge_into(pair, resolution, stdin)`** — no more `keep_path`/`discard_path`; always copies only-in-A → B and only-in-B → A; applies conflict resolution strategy with `blanket` variable for `[4]`/`[5]`
+- **Prompt section** — removed the old `[A]/[B]` and `Proceed? [y/N]` prompts; replaced with the single `[1]/[2]/[3]/[s]` prompt feeding into `merge_into`
+
+---
+
+_**User (2026-03-08 22:01Z)**_
+
+i would like to still see the directory information when choosing what to keep--it might matter to the choice.
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#490-490), lines 490 to 600</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#490-490), lines 490 to 600
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#600-600), lines 600 to 660</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#600-600), lines 600 to 660
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n        let files_to_copy = pair.only_in_a.len() + pair.only_in_b.len() + pair.conflicts.len();\n        println!(\n            \"  Will copy up to {} file(s) to make both sides identical.\",\n            files_to_copy\n        );\n        println!(\"    [A] {}\", pair.a.path);\n        println!(\"    [B] {}\", pair.b.path);\n\n        let resolution_opt: Option&lt;ConflictResolution&gt; = loop {\n            print!(\"  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip &gt; \");\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "        let files_to_copy = pair.only_in_a.len() + pair.only_in_b.len() + pair.conflicts.len();\n        println!(\n            \"  Will copy up to {} file(s) to make both sides identical.\",\n            files_to_copy\n        );\n        println!(\"    [A] {}\", pair.a.path);\n        println!(\"    [B] {}\", pair.b.path);\n\n        let resolution_opt: Option&lt;ConflictResolution&gt; = loop {\n            print!(\"  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip &gt; \");",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n                    let (date_old, date_new, side_old, side_new) = if mod_a &lt;= mod_b {\n                        (fmt_mtime(*mod_a), fmt_mtime(*mod_b), \"A\", \"B\")\n                    } else {\n                        (fmt_mtime(*mod_b), fmt_mtime(*mod_a), \"B\", \"A\")\n                    };\n                    println!(\"    {} (old [{}]: {}  new [{}]: {})\", fname, side_old, date_old, side_new, date_new);\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "                    let (date_old, date_new, side_old, side_new) = if mod_a &lt;= mod_b {\n                        (fmt_mtime(*mod_a), fmt_mtime(*mod_b), \"A\", \"B\")\n                    } else {\n                        (fmt_mtime(*mod_b), fmt_mtime(*mod_a), \"B\", \"A\")\n                    };\n                    println!(\"    {} (old [{}]: {}  new [{}]: {})\", fname, side_old, date_old, side_new, date_new);",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "e3b814d8-6a01-479e-b1a0-e542945a82a8",
+  "terminalCommandId": "tool-8ad634da-9ee9-4ba6-96a1-b52199573681",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Let me see what directory info is currently shown before the prompt: The directory paths are shown earlier in the output as `[A]` and `[B]`, but they scroll away before the prompt. I'll repeat them just above the resolution prompt: And in the per-file prompt, show which side (A or B) is old vs new so the directory context is clear there too: The prompt flow now looks like this:
+
+```
+  Will copy up to 3 file(s) to make both sides identical.
+    [A] /photos/2009/jan
+    [B] /photos/backup/2009/jan
+  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip >
+```
+
+And for per-file prompts, A/B labels are shown so you know which side is old vs new:
+
+```
+    IMG_3700.JPG (old [A]: 2009-01-05 16:17  new [B]: 2009-01-05 17:17)
+    [1] keep old  [2] keep new  [4] keep all old  [5] keep all new >
+```
+
+---
+
+_**User (2026-03-08 22:07Z)**_
+
+ok some information is lost from what we had before:  we used to see the first few conflicting files, and whether they are newer or older in a or b.  i'd still like to see that information, or even better a summary, like [A] /photo/2009/jan (13 new files)
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#620-620), lines 620 to 680</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#620-620), lines 620 to 680
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n        let newer_in_a = pair.conflicts.iter().filter(|(_, _, _, ma, mb)| ma &gt;= mb).count();\n        let newer_in_b = pair.conflicts.len() - newer_in_a;\n        if !pair.conflicts.is_empty() {\n            println!(\n                \"  Conflicts ({} total — {} newer in A, {} newer in B):\",\n                pair.conflicts.len(),\n                newer_in_a,\n                newer_in_b,\n            );\n            for (rel, _, _, mod_a, mod_b) in pair.conflicts.iter().take(5) {\n                let (newer, date) = if mod_a &gt;= mod_b {\n                    (\"A\", fmt_mtime(*mod_a))\n                } else {\n                    (\"B\", fmt_mtime(*mod_b))\n                };\n                println!(\"    ~ {} (newer [{}]: {})\", rel, newer, date);\n            }\n            if pair.conflicts.len() &gt; 5 {\n                println!(\"    ... and {} more\", pair.conflicts.len() - 5);\n            }\n        }\n\n        if !merge {\n            println!();\n            continue;\n        }\n\n        let files_to_copy = pair.only_in_a.len() + pair.only_in_b.len() + pair.conflicts.len();\n        println!(\n            \"  Will copy up to {} file(s) to make both sides identical.\",\n            files_to_copy\n        );\n        println!(\n            \"    [A] {} ({} files, {} exclusive, {} newer in conflicts)\",\n            pair.a.path, pair.a.file_count, pair.only_in_a.len(), newer_in_a,\n        );\n        println!(\n            \"    [B] {} ({} files, {} exclusive, {} newer in conflicts)\",\n            pair.b.path, pair.b.file_count, pair.only_in_b.len(), newer_in_b,\n        );\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "        let newer_in_a = pair.conflicts.iter().filter(|(_, _, _, ma, mb)| ma &gt;= mb).count();\n        let newer_in_b = pair.conflicts.len() - newer_in_a;\n        if !pair.conflicts.is_empty() {\n            println!(\n                \"  Conflicts ({} total — {} newer in A, {} newer in B):\",\n                pair.conflicts.len(),\n                newer_in_a,\n                newer_in_b,\n            );\n            for (rel, _, _, mod_a, mod_b) in pair.conflicts.iter().take(5) {\n                let (newer, date) = if mod_a &gt;= mod_b {\n                    (\"A\", fmt_mtime(*mod_a))\n                } else {\n                    (\"B\", fmt_mtime(*mod_b))\n                };\n                println!(\"    ~ {} (newer [{}]: {})\", rel, newer, date);\n            }\n            if pair.conflicts.len() &gt; 5 {\n                println!(\"    ... and {} more\", pair.conflicts.len() - 5);\n            }\n        }\n\n        if !merge {\n            println!();\n            continue;\n        }\n\n        let files_to_copy = pair.only_in_a.len() + pair.only_in_b.len() + pair.conflicts.len();\n        println!(\n            \"  Will copy up to {} file(s) to make both sides identical.\",\n            files_to_copy\n        );\n        println!(\n            \"    [A] {} ({} files, {} exclusive, {} newer in conflicts)\",\n            pair.a.path, pair.a.file_count, pair.only_in_a.len(), newer_in_a,\n        );\n        println!(\n            \"    [B] {} ({} files, {} exclusive, {} newer in conflicts)\",\n            pair.b.path, pair.b.file_count, pair.only_in_b.len(), newer_in_b,\n        );",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "9301a0e4-a764-412f-9bf3-91bda8347938",
+  "terminalCommandId": "tool-2a6d907e-d107-4323-a281-f47d76a0a28b",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Let me look at the current conflict display and the conflict data structure: I'll replace the conflicts display block and the directory summary lines just above the prompt with richer information: But `newer_in_a` is now computed before the `if !merge` check, so it needs to also be available in the non-merge path (the conflicts display). Let me check if it's in scope correctly — the `newer_in_a` binding is computed just before the conflicts block, which is before the `if !merge` check, so it's in scope for both. Good. Let's build: All 26 passing. The output now looks like:
+
+```
+  Conflicts (3 total — 2 newer in A, 1 newer in B):
+    ~ IMG_3700.JPG (newer [A]: 2009-01-05 17:22)
+    ~ IMG_3701.JPG (newer [B]: 2009-03-12 09:44)
+    ~ IMG_3702.JPG (newer [A]: 2009-03-14 11:01)
+  Will copy up to 5 file(s) to make both sides identical.
+    [A] /photos/2009/jan (13 files, 1 exclusive, 2 newer in conflicts)
+    [B] /photos/backup/2009/jan (12 files, 0 exclusive, 1 newer in conflicts)
+  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip >
+```
+
+---
+
+_**User (2026-03-08 22:08Z)**_
+
+why did you add the conflict resolution enum?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+To avoid the `keep_path`/`discard_path` approach that the old `merge_into` used, where one side "won" and the other was the "discard" target. The new merge always updates **both** sides, so the function no longer needs to know which is keep and which is discard — it just needs to know the conflict resolution strategy.
+
+Passing the strategy as a typed enum rather than, say, a string or boolean also makes the three-way branch in `merge_into` exhaustive and clear, and lets the per-file `[4]`/`[5]` blanket override slot naturally into the same type (`blanket: Option<ConflictResolution>`).
+
+---
+
+_**User (2026-03-08 22:09Z)**_
+
+will we ever have 3 or more directories that are all similar, or is this always going to operate on pairs?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Always pairs. The algorithm finds **pairs** of similar directories — each candidate is a `(leaf_a, leaf_b)` tuple, and the walk-up produces one `SimilarPair`. There's no concept of a 3-way merge.
+
+That said, you could end up with multiple pairs that share a directory — e.g. `(A, B)` and `(A, C)` as separate pairs in `similar_pairs`. But each is handled independently, one at a time. If you merged A←→B first, then A←→C would be a separate prompt. There's no grouping or n-way reconciliation.
+
+---
+
+_**User (2026-03-08 22:11Z)**_
+
+how hard is it to handle x-way merges?  for example, once we identify pairs, could we see which of those have a common directory?  merging options would become keep newest/oldest (no other choice would ever make sense)
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+It's moderately complex. The pair-finding and scoring stay the same — you'd just add a post-processing step that clusters the pairs into connected components (a simple union-find or just iterating the edge list), then for any component with 3+ directories, collapse it into a group merge instead of showing individual pair prompts.
+
+The tricky parts:
+
+**Clustering is easy.** Given pairs `(A,B)` and `(A,C)`, union-find gives you `{A, B, C}`. Straightforward.
+
+**The merge logic gets harder.** Right now `merge_into` works on a `SimilarPair` which has pre-computed `only_in_a`, `only_in_b`, `conflicts`. For N directories you'd need to re-think that:
+- "only in one dir" → copy to all N-1 others
+- "conflicts" → same file exists in multiple dirs with different content; you'd pick the newest (or oldest) copy and overwrite all others
+
+Computing the N-way diff means iterating all files across all N directories and grouping by relative path — doable but more involved than the pairwise `compare_dirs_mem`.
+
+**The summary display** becomes harder to present clearly. "3 newer in A, 1 newer in B, 2 newer in C" is still readable; more than ~5 directories gets unwieldy.
+
+**My honest take:** it's probably not worth it for your use case. The scenario where you have 3+ near-duplicate photo directories that aren't already caught as pairs-of-pairs seems rare. And if `(A,B)` and `(A,C)` do show up as separate pairs, handling them sequentially works fine — merge A↔B first, then A↔C, and after the second merge all three are identical, at which point a re-run catches the duplicates. The interactive UX for N-way merges also gets confusing fast.
+
+---
+
+_**User (2026-03-08 22:13Z)**_
+
+ok we'll leave it as is for now
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Sounds good. Let me know when you're ready to work on something else.
+
+---
+
