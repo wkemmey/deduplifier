@@ -11334,3 +11334,356 @@ Sounds good. Let me know when you're ready to work on something else.
 
 ---
 
+_**User (2026-03-08 22:14Z)**_
+
+--canon now has no real effect for a merge, correct?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Correct. Before the redesign, `--canon` determined which side was "keep" vs "discard" — if one directory was under the canon path, it auto-selected as the merge target without prompting. Now that both sides are always updated symmetrically, there's no keep/discard concept, so canon has no effect on the merge.
+
+The `canon` parameter is still accepted by `find_similar_directories` but it's unused (hence the compiler warning). It still matters for `find_duplicate_directories` (the non-`--similarity` path), where it controls which copy is kept when deleting duplicates.
+
+---
+
+_**User (2026-03-08 22:16Z)**_
+
+the canon directory should still be included in the scan etc.  should we clean up the compiler warning?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#425-425), lines 425 to 432</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#425-425), lines 425 to 432
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="search" data-tool-name="copilot_findTextInFiles">
+<details>
+<summary>Tool use: **copilot_findTextInFiles** • Searching for text `canon: Option<&Path>` (`**/src/similar.rs`)</summary>
+
+
+Searched for text `canon: Option<&Path>` (`**/src/similar.rs`), 1 result
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    _canon: Option&lt;&amp;Path&gt;,\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    _canon: Option&lt;&amp;Path&gt;,",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "25915527-7fe7-4b43-a100-f5b8309824fe",
+  "terminalCommandId": "tool-2fe743a6-fbe0-4a9a-a4f4-d8396699096c",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo build 2&gt;&amp;1",
+    "toolEdited": "cargo build 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Yes — the parameter should stay (it's still used in `main.rs` to build the scan list), but in `find_similar_directories` the unused `canon` just needs a leading underscore to silence the warning: Clean build, no warnings.
+
+---
+
+_**User (2026-03-08 22:17Z)**_
+
+why does find_similar_directories still need the parameter?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="search" data-tool-name="copilot_findTextInFiles">
+<details>
+<summary>Tool use: **copilot_findTextInFiles** • Searching for text `find_similar_directories`</summary>
+
+
+Searched for text `find_similar_directories`, 20 results
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#108-108), lines 108 to 120</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#108-108), lines 108 to 120
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#447-447), lines 447 to 460</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#447-447), lines 447 to 460
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\npub fn find_similar_directories(\n    conn: &amp;Connection,\n    threshold: f64,\n    scanned_dirs: &amp;[&amp;Path],\n    merge: bool,\n) -&gt; Result&lt;()&gt; {\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "pub fn find_similar_directories(\n    conn: &amp;Connection,\n    threshold: f64,\n    scanned_dirs: &amp;[&amp;Path],\n    merge: bool,\n) -&gt; Result&lt;()&gt; {",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n        find_similar_directories(\n            &amp;conn,\n            threshold,\n            &amp;scanned_paths,\n            true,\n        )?;\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "        find_similar_directories(\n            &amp;conn,\n            threshold,\n            &amp;scanned_paths,\n            true,\n        )?;",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#740-740), lines 740 to 805</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#740-740), lines 740 to 805
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "2b30b4cf-1d48-43d3-bfe9-d2cc732f6612",
+  "terminalCommandId": "tool-4e661c1c-b5c8-4ea0-93d0-b95b6c4e4e90",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; sed -i 's/find_similar_directories(&amp;conn, 0\\.9, None, \\&amp;\\[\\], false)/find_similar_directories(\\&amp;conn, 0.9, \\&amp;[], false)/g; s/find_similar_directories(&amp;conn, 0\\.85, None, \\&amp;\\[\\], false)/find_similar_directories(\\&amp;conn, 0.85, \\&amp;[], false)/g' src/similar.rs",
+    "toolEdited": "sed -i 's/find_similar_directories(&amp;conn, 0\\.9, None, \\&amp;\\[\\], false)/find_similar_directories(\\&amp;conn, 0.9, \\&amp;[], false)/g; s/find_similar_directories(&amp;conn, 0\\.85, None, \\&amp;\\[\\], false)/find_similar_directories(\\&amp;conn, 0.85, \\&amp;[], false)/g' src/similar.rs"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "09996eee-51f1-4122-b5e6-40e286436154",
+  "terminalCommandId": "tool-ffbe085f-b401-4b44-b600-1aba054ef9ba",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+It doesn't — `main.rs` passes `args.canon.as_deref()` to it, but that value is only actually needed for `build_scan_list` (which runs before either `find_similar_directories` or `find_duplicate_directories` is called). We can drop it from the signature entirely. Remove `_canon` from the signature and all call sites, and update the tests: Now fix the four test call sites: Clean — no warnings, 26 tests passing. The `canon` parameter is now completely gone from `find_similar_directories`.
+
+---
+

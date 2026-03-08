@@ -447,7 +447,6 @@ fn merge_into(
 pub fn find_similar_directories(
     conn: &Connection,
     threshold: f64,
-    canon: Option<&Path>,
     scanned_dirs: &[&Path],
     merge: bool,
 ) -> Result<()> {
@@ -742,7 +741,7 @@ mod tests {
     #[test]
     fn test_find_similar_no_leaves() {
         let conn = open_test_db();
-        find_similar_directories(&conn, 0.9, None, &[], false).unwrap();
+        find_similar_directories(&conn, 0.9, &[], false).unwrap();
     }
 
     #[test]
@@ -755,7 +754,7 @@ mod tests {
              INSERT INTO files VALUES ('/b/photos/img1.jpg', 'filehash1', 500, 1000);",
         )
         .unwrap();
-        find_similar_directories(&conn, 0.9, None, &[], false).unwrap();
+        find_similar_directories(&conn, 0.9, &[], false).unwrap();
     }
 
     #[test]
@@ -777,7 +776,7 @@ mod tests {
         }
         batch.push_str("INSERT INTO files VALUES ('/a/photos/Thumbs.db', 'thumbhash', 10, 1000);");
         conn.execute_batch(&batch).unwrap();
-        find_similar_directories(&conn, 0.85, None, &[], false).unwrap();
+        find_similar_directories(&conn, 0.85, &[], false).unwrap();
     }
 
     #[test]
@@ -800,6 +799,6 @@ mod tests {
         batch.push_str("INSERT INTO files VALUES ('/a/photos/shared.jpg', 'shared', 500, 1000);");
         batch.push_str("INSERT INTO files VALUES ('/b/photos/shared.jpg', 'shared', 500, 1000);");
         conn.execute_batch(&batch).unwrap();
-        find_similar_directories(&conn, 0.9, None, &[], false).unwrap();
+        find_similar_directories(&conn, 0.9, &[], false).unwrap();
     }
 }

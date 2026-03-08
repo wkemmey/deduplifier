@@ -107,13 +107,7 @@ fn main() -> Result<()> {
 
     if let Some(threshold) = args.similarity {
         println!("\n=== Finding similar (near-duplicate) directories ===");
-        find_similar_directories(
-            &conn,
-            threshold,
-            args.canon.as_deref(),
-            &scanned_paths,
-            true,
-        )?;
+        find_similar_directories(&conn, threshold, &scanned_paths, true)?;
         println!("\nNote: duplicate detection was skipped. Re-run without --similarity to find and delete exact duplicates.");
     } else {
         println!("\n=== Finding duplicate directories ===");
