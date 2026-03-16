@@ -34,15 +34,15 @@ struct SimilarPair {
 // ---------------------------------------------------------------------------
 
 /// rel_path -> (abs_path, hash, modified)
-type FileMap = HashMap<String, (String, String, i64)>;
+pub type FileMap = HashMap<String, (String, String, i64)>;
 
 /// dir_path -> FileMap  (only for directories under scanned roots)
-type DirIndex = HashMap<String, FileMap>;
+pub type DirIndex = HashMap<String, FileMap>;
 
 /// Load every file under the scanned roots into a nested map keyed first by
 /// its immediate parent directory path, then by relative path within that dir.
 /// One DB query replaces hundreds of per-pair LIKE queries.
-fn build_dir_index(conn: &Connection, scanned_dirs: &[&Path]) -> Result<DirIndex> {
+pub fn build_dir_index(conn: &Connection, scanned_dirs: &[&Path]) -> Result<DirIndex> {
     let mut stmt = conn.prepare("SELECT path, hash, modified FROM files ORDER BY path")?;
     let rows: Vec<(String, String, i64)> = stmt
         .query_map([], |row| {
@@ -125,7 +125,7 @@ fn find_leaf_directories(conn: &Connection, scanned_dirs: &[&Path]) -> Result<Ve
 /// For a leaf this is just the immediate files; for a non-leaf (walked-up
 /// ancestor) we need to include all files recursively — handled by
 /// `files_for_dir` which aggregates across all children in the index.
-fn files_for_dir<'a>(
+pub fn files_for_dir<'a>(
     dir_index: &'a DirIndex,
     dir_path: &str,
 ) -> HashMap<String, &'a (String, String, i64)> {

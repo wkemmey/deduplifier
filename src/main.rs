@@ -1,6 +1,7 @@
 mod db;
 mod duplicates;
 mod hashing;
+mod merge;
 mod photos;
 mod scan;
 mod similar;
@@ -12,6 +13,7 @@ use std::path::{Path, PathBuf};
 use db::init_database;
 use duplicates::{find_duplicate_directories, find_duplicate_files};
 use hashing::count_files;
+use merge::merge_into_canon;
 use photos::sort_photos;
 use scan::scan_directory;
 use similar::find_similar_directories;
@@ -164,8 +166,27 @@ fn main() -> Result<()> {
         );
         find_similar_directories(&conn, threshold, &scanned_paths, true)?;
     } else if args.merge {
-        eprintln!("Error: --merge is not yet implemented.");
-        std::process::exit(1);
+        if !args.delete {
+            eprintln!(
+                "Error: --merge requires --delete, because it will delete files without prompting."
+            );
+            std::process::exit(1);
+        }
+        let canon = match args.canon.as_deref() {
+            Some(c) => c,
+            None => {
+                eprintln!("Error: --merge requires --canon to specify the merge target.");
+                std::process::exit(1);
+            }
+        };
+        // sources = everything except canon
+        let sources: Vec<&Path> = scanned_paths
+            .iter()
+            .copied()
+            .filter(|&p| p != canon)
+            .collect();
+        println!("\n=== Merging directories into canon ===");
+        merge_into_canon(&conn, canon, &sources, args.no_confirmation)?;
     } else if args.sort_photos {
         if !args.delete || !args.no_confirmation {
             eprintln!(
