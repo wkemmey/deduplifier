@@ -11687,3 +11687,1513 @@ It doesn't — `main.rs` passes `args.canon.as_deref()` to it, but that value is
 
 ---
 
+_**User (2026-03-08 22:20Z)**_
+
+does --delete do anything when --similarity is set?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs)</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs)
+
+</details>
+</tool-use>
+
+---
+
+Let me check main.rs: No — `--delete` is completely ignored when `--similarity` is set. The two branches are mutually exclusive: `--similarity` goes into the `if` arm (which only calls `find_similar_directories`), and `--delete` is only ever read inside the `else` arm (passed to `find_duplicate_directories`). So in the command on line 7 of your TODO, `--delete` has no effect.
+
+---
+
+_**User (2026-03-09 00:51Z)**_
+
+if i want to add a few more utilities to this project, with separate executables, how would i do it?  or is that just a bad idea
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+It's a perfectly normal Rust pattern. You'd add files under `src/bin/`:
+
+```
+src/
+  main.rs          ← becomes the "deduplifier" binary (unchanged)
+  bin/
+    cleanup.rs     ← becomes a "cleanup" binary
+  db.rs
+  hashing.rs
+  ...
+```
+
+Each file in `src/bin/` automatically becomes its own binary. You can use the shared modules from the same crate with `use deduplifier::db`, etc. — but you'd need to mark the modules `pub` in `main.rs` (or move them to `lib.rs`).
+
+**The cleaner approach if the utilities grow:** split into a library + binaries by adding `src/lib.rs` that re-exports the modules, and have both `main.rs` and `src/bin/*.rs` depend on the lib. But that's only worth it if the utilities actually share significant logic with the main binary.
+
+**For something simple** like a one-off script that just shells out or does basic file operations, a separate standalone Rust file in `src/bin/` with no shared code is fine and zero friction — `cargo run --bin cleanup` just works.
+
+**The bad idea scenario** would be cramming unrelated utilities into the same crate just for convenience — if they don't share code with `deduplifier`, they'd be better off as separate projects. But cleanup tools that operate on the same database or file structures are a natural fit here.
+
+---
+
+_**User (2026-03-09 01:35Z)**_
+
+let's clean up the command line options.  first, no short versions (-d, -h).  second, let's have four main options that are mutually exclusive:  --dup-dirs (the current main functionality, but let's add a command line option for it), --dup-files (what the current --files does, but it's now it's own thing and doesn't run after directories), --similarity (with optional threshold--let's default that to 0.85 if not provided), --merge (which we haven't done yet; this is not the same as the merging we are doing with the similarity detection), and --sort-photos (which we haven't done yet).  warn and exit if the user tries to provide more than one of those.  third, --delete, --no-confirmation, --canon, and --database work as they currently do.  fourth, list the main options first (dup-dirs, dup-files, similarity, sort-photos, and merge)
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#1-1), lines 1 to 130</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#1-1), lines 1 to 130
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n#[derive(Parser, Debug)]\n#[command(name = \"deduplifier\")]\n#[command(about = \"Scan directories, compute hashes, and find duplicates\", long_about = None)]\nstruct Args {\n    /// directories to scan\n    #[arg(required = true)]\n    directories: Vec&lt;PathBuf&gt;,\n\n    // ── Main operation (exactly one required) ────────────────────────────────\n\n    /// find duplicate directories and optionally delete them (see --delete)\n    #[arg(long)]\n    dup_dirs: bool,\n\n    /// find duplicate files\n    #[arg(long)]\n    dup_files: bool,\n\n    /// find and interactively merge similar (but non-identical) directories;\n    /// optionally specify a similarity threshold (0.0–1.0, default 0.85)\n    #[arg(long, value_name = \"THRESHOLD\")]\n    similarity: Option&lt;Option&lt;f64&gt;&gt;,\n\n    /// merge two directory trees together (not yet implemented)\n    #[arg(long)]\n    merge: bool,\n\n    /// sort photos into a date-based folder hierarchy (not yet implemented)\n    #[arg(long)]\n    sort_photos: bool,\n\n    // ── Common options ────────────────────────────────────────────────────────\n\n    /// database file path\n    #[arg(long, default_value = \"deduplifier.db\")]\n    database: PathBuf,\n\n    /// interactively delete duplicate directories (used with --dup-dirs)\n    #[arg(long)]\n    delete: bool,\n\n    /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep\n    #[arg(long)]\n    canon: Option&lt;PathBuf&gt;,\n\n    /// skip per-deletion confirmation prompts when --canon has auto-selected the keeper\n    #[arg(long)]\n    no_confirmation: bool,\n}\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "#[derive(Parser, Debug)]\n#[command(name = \"deduplifier\")]\n#[command(about = \"Scan directories, compute hashes, and find duplicates\", long_about = None)]\nstruct Args {\n    /// directories to scan\n    #[arg(required = true)]\n    directories: Vec&lt;PathBuf&gt;,\n\n    // ── Main operation (exactly one required) ────────────────────────────────\n\n    /// find duplicate directories and optionally delete them (see --delete)\n    #[arg(long)]\n    dup_dirs: bool,\n\n    /// find duplicate files\n    #[arg(long)]\n    dup_files: bool,\n\n    /// find and interactively merge similar (but non-identical) directories;\n    /// optionally specify a similarity threshold (0.0–1.0, default 0.85)\n    #[arg(long, value_name = \"THRESHOLD\")]\n    similarity: Option&lt;Option&lt;f64&gt;&gt;,\n\n    /// merge two directory trees together (not yet implemented)\n    #[arg(long)]\n    merge: bool,\n\n    /// sort photos into a date-based folder hierarchy (not yet implemented)\n    #[arg(long)]\n    sort_photos: bool,\n\n    // ── Common options ────────────────────────────────────────────────────────\n\n    /// database file path\n    #[arg(long, default_value = \"deduplifier.db\")]\n    database: PathBuf,\n\n    /// interactively delete duplicate directories (used with --dup-dirs)\n    #[arg(long)]\n    delete: bool,\n\n    /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep\n    #[arg(long)]\n    canon: Option&lt;PathBuf&gt;,\n\n    /// skip per-deletion confirmation prompts when --canon has auto-selected the keeper\n    #[arg(long)]\n    no_confirmation: bool,\n}",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\nfn main() -&gt; Result&lt;()&gt; {\n    let args = Args::parse();\n\n    // Exactly one main operation must be specified.\n    let op_count = [\n        args.dup_dirs,\n        args.dup_files,\n        args.similarity.is_some(),\n        args.merge,\n        args.sort_photos,\n    ]\n    .iter()\n    .filter(|&amp;&amp;b| b)\n    .count();\n    if op_count == 0 {\n        eprintln!(\n            \"Error: specify one of --dup-dirs, --dup-files, --similarity, --merge, or --sort-photos.\"\n        );\n        std::process::exit(1);\n    }\n    if op_count &gt; 1 {\n        eprintln!(\n            \"Error: --dup-dirs, --dup-files, --similarity, --merge, and --sort-photos are mutually exclusive.\"\n        );\n        std::process::exit(1);\n    }\n\n    let conn = init_database(&amp;args.database)?;\n    let mut total_invalid_paths = 0usize;\n\n    let all_directories = build_scan_list(&amp;args.directories, args.canon.as_ref());\n\n    for directory in &amp;all_directories {\n        if !directory.exists() {\n            eprintln!(\n                \"Warning: Directory {:?} does not exist, skipping\",\n                directory\n            );\n            continue;\n        }\n\n        println!(\"Counting files in directory: {:?}\", directory);\n        let total_files = count_files(directory)?;\n        println!(\"Found {} files to process\", total_files);\n\n        println!(\"Scanning directory: {:?}\", directory);\n        let invalid = scan_directory(&amp;conn, directory, total_files, true)?;\n        total_invalid_paths += invalid;\n        println!(\"\"); // New line after progress\n    }\n\n    if total_invalid_paths &gt; 0 {\n        eprintln!(\n            \"\\nWarning: {} file path(s) with invalid UTF-8 were skipped during this scan.\",\n            total_invalid_paths\n        );\n        eprintln!(\"Please rename these files and re-run to get duplicate results.\");\n        return Ok(());\n    }\n\n    let scanned_paths: Vec&lt;&amp;Path&gt; = all_directories.iter().map(|p| p.as_path()).collect();\n\n    if args.dup_dirs {\n        println!(\"\\n=== Finding duplicate directories ===\");\n        find_duplicate_directories(\n            &amp;conn,\n            args.delete,\n            args.canon.as_deref(),\n            args.no_confirmation,\n            &amp;scanned_paths,\n        )?;\n    } else if args.dup_files {\n        println!(\"\\n=== Finding duplicate files ===\");\n        find_duplicate_files(&amp;conn)?;\n    } else if let Some(threshold_opt) = args.similarity {\n        let threshold = threshold_opt.unwrap_or(0.85);\n        println!(\"\\n=== Finding similar (near-duplicate) directories (threshold: {:.0}%) ===\", threshold * 100.0);\n        find_similar_directories(&amp;conn, threshold, &amp;scanned_paths, true)?;\n    } else if args.merge {\n        eprintln!(\"Error: --merge is not yet implemented.\");\n        std::process::exit(1);\n    } else if args.sort_photos {\n        eprintln!(\"Error: --sort-photos is not yet implemented.\");\n        std::process::exit(1);\n    }\n\n    Ok(())\n}\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "fn main() -&gt; Result&lt;()&gt; {\n    let args = Args::parse();\n\n    // Exactly one main operation must be specified.\n    let op_count = [\n        args.dup_dirs,\n        args.dup_files,\n        args.similarity.is_some(),\n        args.merge,\n        args.sort_photos,\n    ]\n    .iter()\n    .filter(|&amp;&amp;b| b)\n    .count();\n    if op_count == 0 {\n        eprintln!(\n            \"Error: specify one of --dup-dirs, --dup-files, --similarity, --merge, or --sort-photos.\"\n        );\n        std::process::exit(1);\n    }\n    if op_count &gt; 1 {\n        eprintln!(\n            \"Error: --dup-dirs, --dup-files, --similarity, --merge, and --sort-photos are mutually exclusive.\"\n        );\n        std::process::exit(1);\n    }\n\n    let conn = init_database(&amp;args.database)?;\n    let mut total_invalid_paths = 0usize;\n\n    let all_directories = build_scan_list(&amp;args.directories, args.canon.as_ref());\n\n    for directory in &amp;all_directories {\n        if !directory.exists() {\n            eprintln!(\n                \"Warning: Directory {:?} does not exist, skipping\",\n                directory\n            );\n            continue;\n        }\n\n        println!(\"Counting files in directory: {:?}\", directory);\n        let total_files = count_files(directory)?;\n        println!(\"Found {} files to process\", total_files);\n\n        println!(\"Scanning directory: {:?}\", directory);\n        let invalid = scan_directory(&amp;conn, directory, total_files, true)?;\n        total_invalid_paths += invalid;\n        println!(\"\"); // New line after progress\n    }\n\n    if total_invalid_paths &gt; 0 {\n        eprintln!(\n            \"\\nWarning: {} file path(s) with invalid UTF-8 were skipped during this scan.\",\n            total_invalid_paths\n        );\n        eprintln!(\"Please rename these files and re-run to get duplicate results.\");\n        return Ok(());\n    }\n\n    let scanned_paths: Vec&lt;&amp;Path&gt; = all_directories.iter().map(|p| p.as_path()).collect();\n\n    if args.dup_dirs {\n        println!(\"\\n=== Finding duplicate directories ===\");\n        find_duplicate_directories(\n            &amp;conn,\n            args.delete,\n            args.canon.as_deref(),\n            args.no_confirmation,\n            &amp;scanned_paths,\n        )?;\n    } else if args.dup_files {\n        println!(\"\\n=== Finding duplicate files ===\");\n        find_duplicate_files(&amp;conn)?;\n    } else if let Some(threshold_opt) = args.similarity {\n        let threshold = threshold_opt.unwrap_or(0.85);\n        println!(\"\\n=== Finding similar (near-duplicate) directories (threshold: {:.0}%) ===\", threshold * 100.0);\n        find_similar_directories(&amp;conn, threshold, &amp;scanned_paths, true)?;\n    } else if args.merge {\n        eprintln!(\"Error: --merge is not yet implemented.\");\n        std::process::exit(1);\n    } else if args.sort_photos {\n        eprintln!(\"Error: --sort-photos is not yet implemented.\");\n        std::process::exit(1);\n    }\n\n    Ok(())\n}",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "3f5b7e6f-a1aa-46f5-9a91-1dbf6bcb98f1",
+  "terminalCommandId": "tool-c28f0495-46eb-4001-ac33-b84ec3ac255a",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "a2de1d36-8f66-4482-9258-ca59a9898743",
+  "terminalCommandId": "tool-ea6b84ef-c924-4f63-9347-da5c0da0b3fa",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo run -- --help 2&gt;&amp;1",
+    "toolEdited": "cargo run -- --help 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Let me read the current Args struct and main logic carefully before rewriting: Now replace the `main()` body to validate mutual exclusivity and dispatch: All 26 passing, no warnings. Let me verify the `--similarity` optional-value syntax works correctly on the command line: The main operations appear first in the help output exactly as specified. The usage is now:
+
+- `--similarity` alone → uses default threshold 0.85
+- `--similarity 0.90` → uses 0.90
+- Multiple main ops → error with a clear message
+- No main op → error with a clear message
+- `-h`/`-d` short forms are gone (clap always adds `-h`/`--help` automatically, but none of the user-defined args have short versions)
+
+---
+
+_**User (2026-03-09 01:37Z)**_
+
+canon should be listed before delete
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    /// database file path\n    #[arg(long, default_value = \"deduplifier.db\")]\n    database: PathBuf,\n\n    /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep\n    #[arg(long)]\n    canon: Option&lt;PathBuf&gt;,\n\n    /// interactively delete duplicate directories (used with --dup-dirs)\n    #[arg(long)]\n    delete: bool,\n\n    /// skip per-deletion confirmation prompts when --canon has auto-selected the keeper\n    #[arg(long)]\n    no_confirmation: bool,\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    /// database file path\n    #[arg(long, default_value = \"deduplifier.db\")]\n    database: PathBuf,\n\n    /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep\n    #[arg(long)]\n    canon: Option&lt;PathBuf&gt;,\n\n    /// interactively delete duplicate directories (used with --dup-dirs)\n    #[arg(long)]\n    delete: bool,\n\n    /// skip per-deletion confirmation prompts when --canon has auto-selected the keeper\n    #[arg(long)]\n    no_confirmation: bool,",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "aed2a1ab-573b-4dcb-86e2-7069d78cb774",
+  "terminalCommandId": "tool-fcca629b-c41f-420a-90f8-7b2c967c4b38",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo run -- --help 2&gt;&amp;1",
+    "toolEdited": "cargo run -- --help 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+ now appears before `--delete`.
+
+---
+
+_**User (2026-03-09 01:54Z)**_
+
+let's implement --sort-photos.  this expects --delete and --no-confirmation, just so the user knows it's going to make changes without asking, warn and quit otherwise.  --canon is allowed but does nothing.  this takes a single directory (it should be a directory of photos and related files, maybe some movies, metadata, etc.).  it should reorganize the directory so that directory contains subdirectories of the form 2026/2026-01/2026-01-18.  photos should be placed in the appropriate leaf directory based on date taken (from exif data if possible, or time stamp if not).  don't create directories if there are no photos to put in them.  we will move the photo to it's new location, updating the location in the database.  we should delete directories after removing all photos from them (e.g. there is a directory "a day at the beach" with photos in it--once these are moved to data-based directories, delete the "a day at the beach" folder, updating the database).  we should be careful not to lose any photos--so if two photos have the same name and the same destination directory, check the hash to be sure they are different and add a suffix (like "-1") to the file name of the newer file to distinguish them.  am i forgetting anything?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Good question — let me think through the full feature before implementing anything.
+
+**Things you covered:**
+- EXIF date-taken → fallback to mtime
+- Move files, update DB
+- Create `YYYY/YYYY-MM/YYYY-MM-DD` leaf dirs only as needed
+- Delete now-empty source dirs, update DB
+- Collision detection: same name + same dest → check hash → add suffix if different (same hash = true duplicate, handle separately)
+- Require `--delete` + `--no-confirmation`, warn and exit otherwise
+
+**Things you may be forgetting or want to decide:**
+
+1. **What counts as a "photo/video/metadata"?** Do you move *all* files, or only known extensions (`.jpg`, `.mp4`, `.mov`, `.heic`, etc.)? What happens to non-media files like `.txt` or `.xml` sidecars?
+
+2. **What if EXIF date is clearly wrong?** Cameras with dead batteries sometimes report 1980-01-01 or 2001-01-01. Do you want a sanity-check range (e.g. 1990–2035)?
+
+3. **Collision where hashes match** (true duplicate): skip silently? Delete one? Log it?
+
+4. **The source root itself** — you said move photos out of `a day at the beach/` and delete it, but what about the root directory passed on the command line? That should never be deleted even if emptied.
+
+5. **Non-empty dirs that still have non-media files** after all photos are moved — delete anyway? Skip? You'd be leaving orphan metadata behind or deleting it.
+
+6. **Already-sorted files** — if a file is already under `2026/2026-01/2026-01-18`, do you move it again (no-op) or skip it?
+
+7. **The `--canon` interaction** — you said it does nothing, but it does affect `build_scan_list` (adds canon to the scan). Since `--sort-photos` takes a single directory anyway, should `--canon` be disallowed entirely, or just silently ignored?
+
+8. **Single directory constraint** — currently `directories` is `Vec<PathBuf>` with `required = true`. Should `--sort-photos` enforce exactly one, or sort all provided directories independently?
+
+---
+
+_**User (2026-03-09 02:03Z)**_
+
+great questions.  1.  let's only move known extensions.  i will clean up remaining files by hand  2. if exif data is clearly wrong, let's use file time stamp  3. if hashes match (we have a true duplicate) we can delete one 4. agree 5. don't delete non-empty dirs; i'll clean up by hand 6. already sorted files can remain as they are, except as described in the next question 7. i'm changing my mind about canon, let's use it, and if canon is included, the data-based dirs are created under the canon directory, otherwise they are created under the root currently being processed.  8. you're right, there's no need for a single directory constraint, let's sequentially process all directories, starting with the canon directory
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Good, that clarifies everything. Let me also think through the canon interaction before implementing:
+
+**Canon + multi-directory flow:**
+- Scan order: canon first, then the rest (already how `build_scan_list` works)
+- All date-based dirs created under canon root
+- Files from all scanned directories get moved into `<canon>/YYYY/YYYY-MM/YYYY-MM-DD/`
+- Source dirs (non-canon) get cleaned up (empty ones deleted); canon's own internal structure gets reorganized too (files already in `<canon>/old-album/` get moved to `<canon>/YYYY/...` and `<canon>/old-album/` deleted if empty)
+
+**One more thing to pin down before I write code:**
+
+**Already-sorted files** — you said they can remain as-is "except as described in the next question" but there was no next question. Did you mean: if a file is already at `<canon>/2026/2026-01/2026-01-18/foo.jpg`, skip it (no-op move)? Or did you have something else in mind?
+
+Also: **what are the known extensions?** I'd default to something like:
+- Images: `jpg`, `jpeg`, `png`, `gif`, `heic`, `heif`, `tiff`, `tif`, `bmp`, `webp`, `cr2`, `cr3`, `nef`, `arw`, `dng`, `orf`, `rw2`
+- Video: `mp4`, `mov`, `avi`, `mkv`, `m4v`, `3gp`, `mts`, `m2ts`
+- Audio: anything, or skip?
+
+Does that list look right, or do you want to add/remove anything?
+
+---
+
+_**User (2026-03-09 02:07Z)**_
+
+i meant the anwer to the next question, number 8, where i explained how canon will work.  if canon is specified, that's the one time you might move an already sorted file (if it's in a non-canon directory).  you're list of known extensions looks great--i think i have some .thm files as well, which i'm assuming are movies (but not sure).  we can ignore audio
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+`.thm` files are Canon camera thumbnail files that accompany `.avi` video files — small JPEG previews, not the video itself. Worth moving alongside the video (they'll have the same date), so I'll include them.
+
+**Full spec, confirmed:**
+1. Move known-extension files only; leave everything else
+2. EXIF date-taken → fallback to mtime; sanity-check EXIF (1990–2035 range)
+3. Hash collision (true duplicate at destination) → delete the source file
+4. Name collision, different hash → add `-1`, `-2`, etc. suffix before extension
+5. Never delete the root dirs being processed; only delete subdirs that become empty after moves
+6. Non-empty dirs after moves → leave them alone
+7. Already-sorted file in canon dir → skip (it's already where it belongs); already-sorted file in non-canon dir → move it into canon
+8. Canon → date dirs created under canon; no canon → date dirs under the dir currently being processed; process canon first, then others
+9. Extensions: `jpg jpeg png gif heic heif tiff tif bmp webp cr2 cr3 nef arw dng orf rw2 mp4 mov avi mkv m4v 3gp mts m2ts thm`
+
+One last thing: **EXIF dependency**. Reading EXIF requires a crate — the most common is `kamadak-exif` (the `exif` crate on crates.io). It's pure Rust, no C dependencies, works on Windows too. OK to add it?
+
+---
+
+_**User (2026-03-09 02:13Z)**_
+
+yes.  do i need to do anything to reload the devenv?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/Cargo.toml)</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/Cargo.toml)
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="task" data-tool-name="manage_todo_list">
+<details>
+<summary>Tool use: **manage_todo_list** • Using "Manage and track todo items for task planning"</summary>
+
+**Created 4 todos**
+
+- [ ] Add exif crate to Cargo.toml
+  > Add kamadak-exif (the 'exif' crate) as a dependency
+- [ ] Create src/photos.rs
+  > Implement sort_photos() with all the spec: EXIF date, mtime fallback, known extensions, move+DB update, collision handling, empty dir cleanup
+- [ ] Wire up in main.rs
+  > Add mod photos, call sort_photos() from the --sort-photos branch, enforce --delete + --no-confirmation
+- [ ] Build and test
+  > cargo test, fix any issues
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="task" data-tool-name="manage_todo_list">
+<details>
+<summary>Tool use: **manage_todo_list** • Using "Manage and track todo items for task planning"</summary>
+
+**Starting: *Add exif crate to Cargo.toml* (1/4)**
+
+- [-] Add exif crate to Cargo.toml
+  > Add kamadak-exif (the 'exif' crate) as a dependency
+- [ ] Create src/photos.rs
+  > Implement sort_photos() with all the spec: EXIF date, mtime fallback, known extensions, move+DB update, collision handling, empty dir cleanup
+- [ ] Wire up in main.rs
+  > Add mod photos, call sort_photos() from the --sort-photos branch, enforce --delete + --no-confirmation
+- [ ] Build and test
+  > cargo test, fix any issues
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;toml\nclap = { version = \"4.5\", features = [\"derive\"] }\nrusqlite = { version = \"0.32\", features = [\"bundled\"] }\nsha2 = \"0.10\"\nwalkdir = \"2.5\"\nanyhow = \"1.0\"\nexif = \"0.5\"\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "clap = { version = \"4.5\", features = [\"derive\"] }\nrusqlite = { version = \"0.32\", features = [\"bundled\"] }\nsha2 = \"0.10\"\nwalkdir = \"2.5\"\nanyhow = \"1.0\"\nexif = \"0.5\"",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "7214d002-8baa-4066-ad04-e78f3ea916d1",
+  "terminalCommandId": "tool-b5fe46af-4514-4a14-96f7-5b3cc8acd973",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo fetch 2&gt;&amp;1",
+    "toolEdited": "cargo fetch 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "0ae63186-1ea3-45b0-a248-310a041cd9c5",
+  "terminalCommandId": "tool-a1e06a0c-bbca-45b1-b989-c6757b78cd6e",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo search kamadak-exif 2&gt;&amp;1 | head -5",
+    "toolEdited": "cargo search kamadak-exif 2&gt;&amp;1 | head -5"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;toml\nexif = \"0.5\"\nkamadak-exif = \"0.6\"\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "exif = \"0.5\"\nkamadak-exif = \"0.6\"",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;toml\nkamadak-exif = \"0.6\"\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "kamadak-exif = \"0.6\"",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "884c51a6-b17d-4581-a3b8-a76aa3d0c473",
+  "terminalCommandId": "tool-775ca2bf-b7c7-442c-8ab7-a04124337a00",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo fetch 2&gt;&amp;1",
+    "toolEdited": "cargo fetch 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "9fe43bb3-7e1a-42c6-a589-c50a224a8c32",
+  "terminalCommandId": "tool-f0e9d12c-a81e-4373-b5a2-167287e796c5",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo tree 2&gt;&amp;1 | grep -i exif",
+    "toolEdited": "cargo tree 2&gt;&amp;1 | grep -i exif"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="task" data-tool-name="manage_todo_list">
+<details>
+<summary>Tool use: **manage_todo_list** • Using "Manage and track todo items for task planning"</summary>
+
+**Starting: *Create src/photos.rs* (2/4)**
+
+- [x] Add exif crate to Cargo.toml
+  > Add kamadak-exif (the 'exif' crate) as a dependency
+- [-] Create src/photos.rs
+  > Implement sort_photos() with all the spec: EXIF date, mtime fallback, known extensions, move+DB update, collision handling, empty dir cleanup
+- [ ] Wire up in main.rs
+  > Add mod photos, call sort_photos() from the --sort-photos branch, enforce --delete + --no-confirmation
+- [ ] Build and test
+  > cargo test, fix any issues
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_createFile">
+<details>
+<summary>Tool use: **copilot_createFile**</summary>
+
+
+Parameters:
+
+```json
+{
+  "file_path": "/home/whit/projects/deduplifier/src/photos.rs",
+  "relativeWorkspacePath": "photos.rs"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_createFile",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Creating [](file:///home/whit/projects/deduplifier/src/photos.rs)",
+  "pastTenseMessage": "Created [](file:///home/whit/projects/deduplifier/src/photos.rs)",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "",
+  "textEditContent": "use std::collections::HashSet;\nuse std::fs;\nuse std::io::BufReader;\nuse std::path::{Path, PathBuf};\nuse std::time::{SystemTime, UNIX_EPOCH};\n\nuse anyhow::{Context, Result};\nuse rusqlite::Connection;\nuse walkdir::WalkDir;\n\nuse crate::hashing::{compute_file_hash, path_to_str};\n\n// ---------------------------------------------------------------------------\n// Known media extensions (lowercase)\n// ---------------------------------------------------------------------------\nconst MEDIA_EXTENSIONS: &amp;[&amp;str] = &amp;[\n    // Images\n    \"jpg\", \"jpeg\", \"png\", \"gif\", \"heic\", \"heif\", \"tiff\", \"tif\", \"bmp\", \"webp\",\n    \"cr2\", \"cr3\", \"nef\", \"arw\", \"dng\", \"orf\", \"rw2\",\n    // Video\n    \"mp4\", \"mov\", \"avi\", \"mkv\", \"m4v\", \"3gp\", \"mts\", \"m2ts\",\n    // Camera thumbnails (accompany .avi on Canon cameras)\n    \"thm\",\n];\n\n// Sanity-check range for EXIF dates\nconst YEAR_MIN: i32 = 1990;\nconst YEAR_MAX: i32 = 2035;\n\n// ---------------------------------------------------------------------------\n// Public entry point\n// ---------------------------------------------------------------------------\n\n/// Sort all media files under each of &#96;directories&#96; into date-based subdirs.\n/// If &#96;canon&#96; is Some, all date-based dirs are rooted there; otherwise each\n/// file is moved within its own source root.\n/// Requires &#96;--delete&#96; + &#96;--no-confirmation&#96; to have been validated by the caller.\npub fn sort_photos(\n    conn: &amp;Connection,\n    directories: &amp;[&amp;Path],\n    canon: Option&lt;&amp;Path&gt;,\n) -&gt; Result&lt;()&gt; {\n    for &amp;root in directories {\n        println!(\"\\nSorting photos in: {}\", root.display());\n        sort_root(conn, root, canon)?;\n    }\n    Ok(())\n}\n\n// ---------------------------------------------------------------------------\n// Per-root logic\n// ---------------------------------------------------------------------------\n\nfn sort_root(conn: &amp;Connection, root: &amp;Path, canon: Option&lt;&amp;Path&gt;) -&gt; Result&lt;()&gt; {\n    let dest_root = canon.unwrap_or(root);\n\n    // Collect all media files under root (snapshot before we start moving things)\n    let files: Vec&lt;PathBuf&gt; = WalkDir::new(root)\n        .into_iter()\n        .filter_map(|e| e.ok())\n        .filter(|e| e.file_type().is_file())\n        .filter(|e| is_media(e.path()))\n        .map(|e| e.into_path())\n        .collect();\n\n    println!(\"  Found {} media file(s) to process.\", files.len());\n\n    let mut moved = 0usize;\n    let mut skipped = 0usize;\n    let mut deleted_dups = 0usize;\n\n    for src in &amp;files {\n        let date = photo_date(src);\n        let dest_dir = dest_root\n            .join(format!(\"{:04}\", date.0))\n            .join(format!(\"{:04}-{:02}\", date.0, date.1))\n            .join(format!(\"{:04}-{:02}-{:02}\", date.0, date.1, date.2));\n\n        // Already in the right place?\n        if let Some(src_parent) = src.parent() {\n            if src_parent == dest_dir {\n                skipped += 1;\n                continue;\n            }\n        }\n\n        let dest_path = resolve_dest(src, &amp;dest_dir, conn)?;\n\n        match dest_path {\n            DestResult::TrueDuplicate =&gt; {\n                // Identical file already exists at destination — remove source\n                println!(\"  Duplicate (same hash): removing {}\", src.display());\n                fs::remove_file(src)\n                    .with_context(|| format!(\"removing duplicate {}\", src.display()))?;\n                db_remove_file(conn, src);\n                deleted_dups += 1;\n            }\n            DestResult::Path(dest) =&gt; {\n                fs::create_dir_all(&amp;dest_dir)\n                    .with_context(|| format!(\"creating {}\", dest_dir.display()))?;\n                fs::rename(src, &amp;dest)\n                    .with_context(|| format!(\"moving {} -&gt; {}\", src.display(), dest.display()))?;\n                println!(\"  Moved: {} -&gt; {}\", src.display(), dest.display());\n                db_move_file(conn, src, &amp;dest);\n                moved += 1;\n            }\n        }\n    }\n\n    println!(\n        \"  Done: {} moved, {} already sorted, {} true duplicates removed.\",\n        moved, skipped, deleted_dups\n    );\n\n    // Delete now-empty subdirectories (but never the root itself)\n    cleanup_empty_dirs(conn, root, dest_root)?;\n\n    Ok(())\n}\n\n// ---------------------------------------------------------------------------\n// Destination path resolution\n// ---------------------------------------------------------------------------\n\nenum DestResult {\n    Path(PathBuf),\n    TrueDuplicate,\n}\n\n/// Return the destination path for &#96;src&#96; inside &#96;dest_dir&#96;, handling collisions.\n/// If an identical file (same hash) already exists there, return TrueDuplicate.\nfn resolve_dest(src: &amp;Path, dest_dir: &amp;Path, conn: &amp;Connection) -&gt; Result&lt;DestResult&gt; {\n    let fname = src\n        .file_name()\n        .and_then(|n| n.to_str())\n        .unwrap_or(\"file\");\n\n    let stem = Path::new(fname)\n        .file_stem()\n        .and_then(|s| s.to_str())\n        .unwrap_or(\"file\");\n    let ext = Path::new(fname)\n        .extension()\n        .and_then(|e| e.to_str())\n        .map(|e| format!(\".{}\", e))\n        .unwrap_or_default();\n\n    // Try the plain name first, then -1, -2, …\n    let mut candidate = dest_dir.join(fname);\n    let mut suffix = 0u32;\n\n    loop {\n        if !candidate.exists() {\n            return Ok(DestResult::Path(candidate));\n        }\n\n        // File exists at destination — compare hashes\n        let src_hash = compute_file_hash(src)\n            .with_context(|| format!(\"hashing {}\", src.display()))?;\n        let dest_hash = compute_file_hash(&amp;candidate)\n            .with_context(|| format!(\"hashing {}\", candidate.display()))?;\n\n        if src_hash == dest_hash {\n            return Ok(DestResult::TrueDuplicate);\n        }\n\n        // Different content — try next suffix\n        suffix += 1;\n        // Keep the newer file under the suffixed name; we're moving src,\n        // so src gets the suffix (dest stays as-is).\n        candidate = dest_dir.join(format!(\"{}-{}{}\", stem, suffix, ext));\n        let _ = conn; // conn reserved for future use if needed here\n    }\n}\n\n// ---------------------------------------------------------------------------\n// Date extraction\n// ---------------------------------------------------------------------------\n\n/// Returns (year, month, day) for the file.\n/// Tries EXIF DateTimeOriginal first; falls back to mtime.\nfn photo_date(path: &amp;Path) -&gt; (i32, u32, u32) {\n    if let Some(date) = exif_date(path) {\n        return date;\n    }\n    mtime_date(path)\n}\n\nfn exif_date(path: &amp;Path) -&gt; Option&lt;(i32, u32, u32)&gt; {\n    let file = fs::File::open(path).ok()?;\n    let mut reader = BufReader::new(file);\n    let exif = exif::Reader::new()\n        .read_from_container(&amp;mut reader)\n        .ok()?;\n\n    // Prefer DateTimeOriginal, fall back to DateTimeDigitized, then DateTime\n    let tags = [\n        exif::Tag::DateTimeOriginal,\n        exif::Tag::DateTimeDigitized,\n        exif::Tag::DateTime,\n    ];\n\n    for tag in &amp;tags {\n        if let Some(field) = exif.get_field(*tag, exif::In::PRIMARY) {\n            if let exif::Value::Ascii(ref vecs) = field.value {\n                if let Some(bytes) = vecs.first() {\n                    // Format: \"YYYY:MM:DD HH:MM:SS\"\n                    if let Ok(s) = std::str::from_utf8(bytes) {\n                        if let Some((year, month, day)) = parse_exif_date(s) {\n                            if year &gt;= YEAR_MIN &amp;&amp; year &lt;= YEAR_MAX {\n                                return Some((year, month, day));\n                            }\n                        }\n                    }\n                }\n            }\n        }\n    }\n    None\n}\n\nfn parse_exif_date(s: &amp;str) -&gt; Option&lt;(i32, u32, u32)&gt; {\n    // \"YYYY:MM:DD HH:MM:SS\"\n    let parts: Vec&lt;&amp;str&gt; = s.splitn(2, ' ').collect();\n    let date_part = parts.first()?;\n    let date_fields: Vec&lt;&amp;str&gt; = date_part.split(':').collect();\n    if date_fields.len() &lt; 3 {\n        return None;\n    }\n    let year: i32 = date_fields[0].parse().ok()?;\n    let month: u32 = date_fields[1].parse().ok()?;\n    let day: u32 = date_fields[2].parse().ok()?;\n    if month == 0 || month &gt; 12 || day == 0 || day &gt; 31 {\n        return None;\n    }\n    Some((year, month, day))\n}\n\nfn mtime_date(path: &amp;Path) -&gt; (i32, u32, u32) {\n    let secs = fs::metadata(path)\n        .and_then(|m| m.modified())\n        .map(|t| {\n            t.duration_since(UNIX_EPOCH)\n                .map(|d| d.as_secs() as i64)\n                .unwrap_or(0)\n        })\n        .unwrap_or(0);\n    secs_to_ymd(secs)\n}\n\n/// Convert Unix timestamp (seconds) to (year, month, day).\nfn secs_to_ymd(secs: i64) -&gt; (i32, u32, u32) {\n    let secs = secs.max(0) as u64;\n    let days = secs / 86400;\n    let mut y = 1970i32;\n    let mut d = days;\n    loop {\n        let leap = is_leap(y);\n        let days_in_year = if leap { 366 } else { 365 };\n        if d &lt; days_in_year {\n            break;\n        }\n        d -= days_in_year;\n        y += 1;\n    }\n    let month_days: [u64; 12] = [\n        31,\n        if is_leap(y) { 29 } else { 28 },\n        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,\n    ];\n    let mut month = 1u32;\n    for &amp;md in &amp;month_days {\n        if d &lt; md {\n            break;\n        }\n        d -= md;\n        month += 1;\n    }\n    (y, month, (d + 1) as u32)\n}\n\nfn is_leap(y: i32) -&gt; bool {\n    (y % 4 == 0 &amp;&amp; y % 100 != 0) || y % 400 == 0\n}\n\n// ---------------------------------------------------------------------------\n// Empty directory cleanup\n// ---------------------------------------------------------------------------\n\n/// Walk &#96;root&#96; bottom-up and remove any empty subdirectory (never removes root\n/// itself or dest_root itself).\nfn cleanup_empty_dirs(conn: &amp;Connection, root: &amp;Path, dest_root: &amp;Path) -&gt; Result&lt;()&gt; {\n    // Collect all dirs under root, sorted deepest-first\n    let mut dirs: Vec&lt;PathBuf&gt; = WalkDir::new(root)\n        .min_depth(1)\n        .into_iter()\n        .filter_map(|e| e.ok())\n        .filter(|e| e.file_type().is_dir())\n        .map(|e| e.into_path())\n        .collect();\n\n    // Also collect dirs under dest_root if different from root\n    if dest_root != root {\n        let extra: Vec&lt;PathBuf&gt; = WalkDir::new(dest_root)\n            .min_depth(1)\n            .into_iter()\n            .filter_map(|e| e.ok())\n            .filter(|e| e.file_type().is_dir())\n            .map(|e| e.into_path())\n            .collect();\n        for d in extra {\n            if !dirs.contains(&amp;d) {\n                dirs.push(d);\n            }\n        }\n    }\n\n    // Sort deepest first (longest path first)\n    dirs.sort_by(|a, b| b.components().count().cmp(&amp;a.components().count()));\n\n    let protected: HashSet&lt;PathBuf&gt; = [root.to_path_buf(), dest_root.to_path_buf()]\n        .into_iter()\n        .collect();\n\n    for dir in &amp;dirs {\n        if protected.contains(dir.as_path()) {\n            continue;\n        }\n        // Try to read the directory; if empty, remove it\n        let Ok(mut entries) = fs::read_dir(dir) else {\n            continue;\n        };\n        if entries.next().is_none() {\n            match fs::remove_dir(dir) {\n                Ok(()) =&gt; {\n                    println!(\"  Removed empty dir: {}\", dir.display());\n                    db_remove_dir(conn, dir);\n                }\n                Err(e) =&gt; {\n                    eprintln!(\"  Warning: could not remove {}: {}\", dir.display(), e);\n                }\n            }\n        }\n    }\n    Ok(())\n}\n\n// ---------------------------------------------------------------------------\n// Database helpers\n// ---------------------------------------------------------------------------\n\nfn db_move_file(conn: &amp;Connection, old_path: &amp;Path, new_path: &amp;Path) {\n    if let (Some(old), Some(new)) = (path_to_str(old_path), path_to_str(new_path)) {\n        if let Err(e) = conn.execute(\n            \"UPDATE files SET path = ?1 WHERE path = ?2\",\n            rusqlite::params![new, old],\n        ) {\n            eprintln!(\"Warning: DB update failed for {}: {}\", old, e);\n        }\n    }\n}\n\nfn db_remove_file(conn: &amp;Connection, path: &amp;Path) {\n    if let Some(p) = path_to_str(path) {\n        if let Err(e) = conn.execute(\"DELETE FROM files WHERE path = ?1\", rusqlite::params![p]) {\n            eprintln!(\"Warning: DB delete failed for {}: {}\", p, e);\n        }\n    }\n}\n\nfn db_remove_dir(conn: &amp;Connection, path: &amp;Path) {\n    if let Some(p) = path_to_str(path) {\n        // Remove the directory record and all files under it\n        if let Err(e) = conn.execute(\n            \"DELETE FROM files WHERE path LIKE ?1 || '/%'\",\n            rusqlite::params![p],\n        ) {\n            eprintln!(\"Warning: DB cleanup failed for dir {}: {}\", p, e);\n        }\n        if let Err(e) = conn.execute(\n            \"DELETE FROM directories WHERE path = ?1\",\n            rusqlite::params![p],\n        ) {\n            eprintln!(\"Warning: DB cleanup failed for dir {}: {}\", p, e);\n        }\n    }\n}\n\n// ---------------------------------------------------------------------------\n// Helpers\n// ---------------------------------------------------------------------------\n\nfn is_media(path: &amp;Path) -&gt; bool {\n    path.extension()\n        .and_then(|e| e.to_str())\n        .map(|e| MEDIA_EXTENSIONS.contains(&amp;e.to_ascii_lowercase().as_str()))\n        .unwrap_or(false)\n}\n",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="task" data-tool-name="manage_todo_list">
+<details>
+<summary>Tool use: **manage_todo_list** • Using "Manage and track todo items for task planning"</summary>
+
+**Starting: *Wire up in main.rs* (3/4)**
+
+- [x] Add exif crate to Cargo.toml
+  > Add kamadak-exif (the 'exif' crate) as a dependency
+- [x] Create src/photos.rs
+  > Implement sort_photos() with all the spec: EXIF date, mtime fallback, known extensions, move+DB update, collision handling, empty dir cleanup
+- [-] Wire up in main.rs
+  > Add mod photos, call sort_photos() from the --sort-photos branch, enforce --delete + --no-confirmation
+- [ ] Build and test
+  > cargo test, fix any issues
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\nmod db;\nmod duplicates;\nmod hashing;\nmod photos;\nmod scan;\nmod similar;\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "mod db;\nmod duplicates;\nmod hashing;\nmod photos;\nmod scan;\nmod similar;",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\nuse db::init_database;\nuse duplicates::{find_duplicate_directories, find_duplicate_files};\nuse hashing::count_files;\nuse photos::sort_photos;\nuse scan::scan_directory;\nuse similar::find_similar_directories;\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "use db::init_database;\nuse duplicates::{find_duplicate_directories, find_duplicate_files};\nuse hashing::count_files;\nuse photos::sort_photos;\nuse scan::scan_directory;\nuse similar::find_similar_directories;",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    } else if args.merge {\n        eprintln!(\"Error: --merge is not yet implemented.\");\n        std::process::exit(1);\n    } else if args.sort_photos {\n        if !args.delete || !args.no_confirmation {\n            eprintln!(\n                \"Error: --sort-photos requires both --delete and --no-confirmation, \\\n                 because it will move and delete files without prompting.\"\n            );\n            std::process::exit(1);\n        }\n        println!(\"\\n=== Sorting photos into date-based directories ===\");\n        sort_photos(&amp;conn, &amp;scanned_paths, args.canon.as_deref())?;\n    }\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    } else if args.merge {\n        eprintln!(\"Error: --merge is not yet implemented.\");\n        std::process::exit(1);\n    } else if args.sort_photos {\n        if !args.delete || !args.no_confirmation {\n            eprintln!(\n                \"Error: --sort-photos requires both --delete and --no-confirmation, \\\n                 because it will move and delete files without prompting.\"\n            );\n            std::process::exit(1);\n        }\n        println!(\"\\n=== Sorting photos into date-based directories ===\");\n        sort_photos(&amp;conn, &amp;scanned_paths, args.canon.as_deref())?;\n    }",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="task" data-tool-name="manage_todo_list">
+<details>
+<summary>Tool use: **manage_todo_list** • Using "Manage and track todo items for task planning"</summary>
+
+**Starting: *Build and test* (4/4)**
+
+- [x] Add exif crate to Cargo.toml
+  > Add kamadak-exif (the 'exif' crate) as a dependency
+- [x] Create src/photos.rs
+  > Implement sort_photos() with all the spec: EXIF date, mtime fallback, known extensions, move+DB update, collision handling, empty dir cleanup
+- [x] Wire up in main.rs
+  > Add mod photos, call sort_photos() from the --sort-photos branch, enforce --delete + --no-confirmation
+- [-] Build and test
+  > cargo test, fix any issues
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "304078c4-29fb-4fa3-8da7-b925fcc20bc4",
+  "terminalCommandId": "tool-ca515b30-21c3-46dc-93e5-40e484a82876",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="search" data-tool-name="copilot_findTextInFiles">
+<details>
+<summary>Tool use: **copilot_findTextInFiles** • Searching for text `pub fn path_to_str` (`**/src/hashing.rs`)</summary>
+
+
+Searched for text `pub fn path_to_str` (`**/src/hashing.rs`), 1 result
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_multiReplaceString">
+<details>
+<summary>Tool use: **copilot_multiReplaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_multiReplaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Multi-Replace String in Files\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\nfn db_remove_dir(conn: &amp;Connection, path: &amp;Path) {\n    if let Ok(p) = path_to_str(path) {\nfn db_remove_file(conn: &amp;Connection, path: &amp;Path) {\n    if let Ok(p) = path_to_str(path) {\n        if let Err(e) = conn.execute(\"DELETE FROM files WHERE path = ?1\", rusqlite::params![p]) {\n            eprintln!(\"Warning: DB delete failed for {}: {}\", p, e);\n        }\n    }\n}\nfn db_move_file(conn: &amp;Connection, old_path: &amp;Path, new_path: &amp;Path) {\n    match (path_to_str(old_path), path_to_str(new_path)) {\n        (Ok(old), Ok(new)) =&gt; {\n            if let Err(e) = conn.execute(\n                \"UPDATE files SET path = ?1 WHERE path = ?2\",\n                rusqlite::params![new, old],\n            ) {\n                eprintln!(\"Warning: DB update failed for {}: {}\", old, e);\n            }\n        }\n        _ =&gt; eprintln!(\"Warning: non-UTF-8 path, skipping DB update\"),\n    }\n}\nuse std::time::UNIX_EPOCH;\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "fn db_remove_dir(conn: &amp;Connection, path: &amp;Path) {\n    if let Ok(p) = path_to_str(path) {fn db_remove_file(conn: &amp;Connection, path: &amp;Path) {\n    if let Ok(p) = path_to_str(path) {\n        if let Err(e) = conn.execute(\"DELETE FROM files WHERE path = ?1\", rusqlite::params![p]) {\n            eprintln!(\"Warning: DB delete failed for {}: {}\", p, e);\n        }\n    }\n}fn db_move_file(conn: &amp;Connection, old_path: &amp;Path, new_path: &amp;Path) {\n    match (path_to_str(old_path), path_to_str(new_path)) {\n        (Ok(old), Ok(new)) =&gt; {\n            if let Err(e) = conn.execute(\n                \"UPDATE files SET path = ?1 WHERE path = ?2\",\n                rusqlite::params![new, old],\n            ) {\n                eprintln!(\"Warning: DB update failed for {}: {}\", old, e);\n            }\n        }\n        _ =&gt; eprintln!(\"Warning: non-UTF-8 path, skipping DB update\"),\n    }\n}use std::time::UNIX_EPOCH;",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "cfcea5a0-79a3-4b37-89de-4928ee081bdd",
+  "terminalCommandId": "tool-aab4da4b-968b-4c80-83b7-87e3af5af5fd",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+No — just add the dependency to `Cargo.toml` and `cargo build` will fetch it automatically. devenv/direnv only needs to be reloaded if you change `devenv.nix` (e.g. adding a system package). Rust crates are handled entirely by Cargo.
+
+Let me get started: The crate is actually named `kamadak-exif`. Let me check the correct name: Hmm, that pulled in a lot of unexpected things (wasm, wit-bindgen). Let me check what version actually resolves: Good — `kamadak-exif` resolved correctly. The extra downloads were likely other crate updates unrelated to this. Now create `src/photos.rs`: Now wire it up in `main.rs`: `path_to_str` returns `Result<&str>` not `Option<&str>`. Let me check its signature and fix the DB helpers: Clean build, 26 tests passing. Here's a summary of what was implemented in `photos.rs`:
+
+- **`sort_photos(conn, directories, canon)`** — processes each directory in order (canon first, already ensured by `build_scan_list`)
+- **EXIF date** — tries `DateTimeOriginal`, `DateTimeDigitized`, `DateTime` in order; sanity-checks year is 1990–2035; falls back to mtime
+- **Destination** — `<canon or root>/YYYY/YYYY-MM/YYYY-MM-DD/`; skips files already in the right place
+- **Collisions** — same name at dest: hash check → if identical, delete source (true duplicate); if different, try `-1`, `-2`, etc. suffixes
+- **DB updates** — `UPDATE files SET path` on move, `DELETE` on removal, directory cleanup on empty dirs
+- **Empty dir cleanup** — bottom-up walk, removes empty subdirs, never touches the root or canon root itself
+- **`--sort-photos` requires `--delete --no-confirmation`** — checked in `main.rs` before any work is done
+
+---
+
+_**User (2026-03-09 02:19Z)**_
+
+we should probably add some more tests for this new functionality
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/photos.rs#1-1), lines 1 to 400</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/photos.rs#1-1), lines 1 to 400
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\nfn is_media(path: &amp;Path) -&gt; bool {\n    path.extension()\n        .and_then(|e| e.to_str())\n        .map(|e| MEDIA_EXTENSIONS.contains(&amp;e.to_ascii_lowercase().as_str()))\n        .unwrap_or(false)\n}\n\n// ---------------------------------------------------------------------------\n// Tests\n// ---------------------------------------------------------------------------\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n    use crate::db::setup_schema;\n    use rusqlite::Connection;\n    use std::fs;\n    use tempfile::tempdir;\n\n    fn open_test_db() -&gt; Connection {\n        let conn = Connection::open_in_memory().unwrap();\n        setup_schema(&amp;conn).unwrap();\n        conn\n    }\n\n    // -- Unit: parse_exif_date -----------------------------------------------\n\n    #[test]\n    fn test_parse_exif_date_valid() {\n        assert_eq!(\n            parse_exif_date(\"2009:01:05 16:17:00\"),\n            Some((2009, 1, 5))\n        );\n    }\n\n    #[test]\n    fn test_parse_exif_date_no_time() {\n        // Some cameras omit the time portion\n        assert_eq!(parse_exif_date(\"2009:01:05\"), None); // needs space separator\n    }\n\n    #[test]\n    fn test_parse_exif_date_invalid_month() {\n        assert_eq!(parse_exif_date(\"2009:13:05 00:00:00\"), None);\n    }\n\n    #[test]\n    fn test_parse_exif_date_zero_day() {\n        assert_eq!(parse_exif_date(\"2009:01:00 00:00:00\"), None);\n    }\n\n    #[test]\n    fn test_parse_exif_date_garbage() {\n        assert_eq!(parse_exif_date(\"not a date\"), None);\n    }\n\n    // -- Unit: secs_to_ymd ---------------------------------------------------\n\n    #[test]\n    fn test_secs_to_ymd_epoch() {\n        // 1970-01-01\n        assert_eq!(secs_to_ymd(0), (1970, 1, 1));\n    }\n\n    #[test]\n    fn test_secs_to_ymd_known_date() {\n        // 2009-01-05 = days since epoch: 14245\n        // 14245 * 86400 = 1230422400\n        assert_eq!(secs_to_ymd(1230422400), (2009, 1, 5));\n    }\n\n    #[test]\n    fn test_secs_to_ymd_leap_day() {\n        // 2000-02-29 (2000 is a leap year)\n        // Days from 1970-01-01 to 2000-02-29 = 11016\n        assert_eq!(secs_to_ymd(11016 * 86400), (2000, 2, 29));\n    }\n\n    #[test]\n    fn test_secs_to_ymd_negative_clamped() {\n        // Negative timestamps clamp to epoch\n        assert_eq!(secs_to_ymd(-1000), (1970, 1, 1));\n    }\n\n    // -- Unit: is_leap -------------------------------------------------------\n\n    #[test]\n    fn test_is_leap_regular() {\n        assert!(is_leap(2000));\n        assert!(is_leap(2004));\n        assert!(!is_leap(1900));\n        assert!(!is_leap(2001));\n    }\n\n    // -- Unit: is_media ------------------------------------------------------\n\n    #[test]\n    fn test_is_media_known_extensions() {\n        for ext in &amp;[\"jpg\", \"JPG\", \"Jpg\", \"mp4\", \"CR2\", \"heic\", \"thm\"] {\n            assert!(\n                is_media(Path::new(&amp;format!(\"file.{}\", ext))),\n                \"expected {} to be media\",\n                ext\n            );\n        }\n    }\n\n    #[test]\n    fn test_is_media_unknown_extensions() {\n        for ext in &amp;[\"txt\", \"xml\", \"db\", \"rs\", \"pdf\"] {\n            assert!(\n                !is_media(Path::new(&amp;format!(\"file.{}\", ext))),\n                \"expected {} not to be media\",\n                ext\n            );\n        }\n    }\n\n    #[test]\n    fn test_is_media_no_extension() {\n        assert!(!is_media(Path::new(\"README\")));\n    }\n\n    // -- Integration: sort_root ----------------------------------------------\n\n    /// Helper: write bytes to a file, creating parent dirs.\n    fn write_file(path: &amp;Path, content: &amp;[u8]) {\n        if let Some(p) = path.parent() {\n            fs::create_dir_all(p).unwrap();\n        }\n        fs::write(path, content).unwrap();\n    }\n\n    #[test]\n    fn test_sort_root_moves_file_by_mtime() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        // Create a JPEG with a known mtime via filetime\n        let src = root.join(\"photo.jpg\");\n        write_file(&amp;src, b\"fake jpeg content\");\n\n        // Set mtime to 2009-01-05 (Unix: 1230422400)\n        let mtime = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1230422400);\n        fs::File::open(&amp;src)\n            .unwrap()\n            .set_modified(mtime)\n            .unwrap_or(()); // best-effort; fallback if unsupported\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // File should have moved somewhere under root/YYYY/...\n        // We don't assert the exact date since set_modified may not work everywhere,\n        // but we can assert the original location is gone and exactly one jpg exists.\n        let remaining: Vec&lt;_&gt; = WalkDir::new(root)\n            .into_iter()\n            .filter_map(|e| e.ok())\n            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some(\"jpg\"))\n            .collect();\n        assert_eq!(remaining.len(), 1, \"exactly one jpg should exist after sort\");\n        assert_ne!(\n            remaining[0].path(),\n            src.as_path(),\n            \"jpg should have moved from its original location\"\n        );\n    }\n\n    #[test]\n    fn test_sort_root_skips_already_sorted() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        // Place a file already in a correctly-named date dir\n        // We'll derive the expected dir from a fixed timestamp\n        let target_dir = root.join(\"2009\").join(\"2009-01\").join(\"2009-01-05\");\n        let target = target_dir.join(\"photo.jpg\");\n        write_file(&amp;target, b\"already sorted\");\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // File should still be in place\n        assert!(target.exists(), \"already-sorted file should not move\");\n    }\n\n    #[test]\n    fn test_sort_root_removes_true_duplicate() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        let content = b\"identical photo content\";\n\n        // Source file in an unsorted subdir\n        let src_dir = root.join(\"album\");\n        let src = src_dir.join(\"photo.jpg\");\n        write_file(&amp;src, content);\n\n        // Determine where sort_root will try to put it (mtime-based)\n        let secs = fs::metadata(&amp;src)\n            .unwrap()\n            .modified()\n            .unwrap()\n            .duration_since(UNIX_EPOCH)\n            .unwrap()\n            .as_secs() as i64;\n        let (y, m, d) = secs_to_ymd(secs);\n        let dest_dir = root\n            .join(format!(\"{:04}\", y))\n            .join(format!(\"{:04}-{:02}\", y, m))\n            .join(format!(\"{:04}-{:02}-{:02}\", y, m, d));\n        let dest = dest_dir.join(\"photo.jpg\");\n\n        // Pre-place the identical file at the destination\n        write_file(&amp;dest, content);\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // Source should be deleted (true duplicate)\n        assert!(!src.exists(), \"true duplicate source should be removed\");\n        // Destination should still exist\n        assert!(dest.exists(), \"destination copy should remain\");\n    }\n\n    #[test]\n    fn test_sort_root_suffixes_name_collision() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        // Source file\n        let src_dir = root.join(\"album\");\n        let src = src_dir.join(\"photo.jpg\");\n        write_file(&amp;src, b\"version A\");\n\n        // Determine destination dir\n        let secs = fs::metadata(&amp;src)\n            .unwrap()\n            .modified()\n            .unwrap()\n            .duration_since(UNIX_EPOCH)\n            .unwrap()\n            .as_secs() as i64;\n        let (y, m, d) = secs_to_ymd(secs);\n        let dest_dir = root\n            .join(format!(\"{:04}\", y))\n            .join(format!(\"{:04}-{:02}\", y, m))\n            .join(format!(\"{:04}-{:02}-{:02}\", y, m, d));\n\n        // Pre-place a DIFFERENT file with the same name\n        write_file(&amp;dest_dir.join(\"photo.jpg\"), b\"version B\");\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // Source should be gone from original location\n        assert!(!src.exists(), \"source should have moved\");\n        // A suffixed copy should exist at the destination\n        assert!(\n            dest_dir.join(\"photo-1.jpg\").exists(),\n            \"suffixed file photo-1.jpg should exist\"\n        );\n        // Original destination should be untouched\n        assert!(dest_dir.join(\"photo.jpg\").exists());\n    }\n\n    #[test]\n    fn test_sort_root_leaves_non_media_alone() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        let txt = root.join(\"notes.txt\");\n        write_file(&amp;txt, b\"some notes\");\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        assert!(txt.exists(), \"non-media files should not be moved\");\n    }\n\n    #[test]\n    fn test_sort_root_deletes_empty_subdir() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        // Create a subdir with a single photo\n        let album = root.join(\"summer_vacation\");\n        let src = album.join(\"photo.jpg\");\n        write_file(&amp;src, b\"vacation photo\");\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // The photo moved out, so summer_vacation should be gone\n        assert!(\n            !album.exists(),\n            \"empty album subdir should be removed after photos are moved out\"\n        );\n    }\n\n    #[test]\n    fn test_sort_root_keeps_nonempty_subdir() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        let album = root.join(\"mixed\");\n        let photo = album.join(\"photo.jpg\");\n        let notes = album.join(\"notes.txt\");\n        write_file(&amp;photo, b\"photo\");\n        write_file(&amp;notes, b\"notes\");\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // Photo moved, but notes.txt keeps the dir non-empty\n        assert!(\n            album.exists(),\n            \"subdir with remaining non-media files should not be deleted\"\n        );\n        assert!(notes.exists());\n    }\n\n    #[test]\n    fn test_sort_root_with_canon() {\n        let dir = tempdir().unwrap();\n        let src_root = dir.path().join(\"source\");\n        let canon_root = dir.path().join(\"canon\");\n        fs::create_dir_all(&amp;src_root).unwrap();\n        fs::create_dir_all(&amp;canon_root).unwrap();\n        let conn = open_test_db();\n\n        let src = src_root.join(\"photo.jpg\");\n        write_file(&amp;src, b\"canon test photo\");\n\n        sort_root(&amp;conn, &amp;src_root, Some(&amp;canon_root)).unwrap();\n\n        // File should have moved into canon_root, not src_root\n        let moved: Vec&lt;_&gt; = WalkDir::new(&amp;canon_root)\n            .into_iter()\n            .filter_map(|e| e.ok())\n            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some(\"jpg\"))\n            .collect();\n        assert_eq!(moved.len(), 1, \"photo should be under canon root\");\n\n        let in_src: Vec&lt;_&gt; = WalkDir::new(&amp;src_root)\n            .into_iter()\n            .filter_map(|e| e.ok())\n            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some(\"jpg\"))\n            .collect();\n        assert_eq!(in_src.len(), 0, \"photo should not remain under source root\");\n    }\n}\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "fn is_media(path: &amp;Path) -&gt; bool {\n    path.extension()\n        .and_then(|e| e.to_str())\n        .map(|e| MEDIA_EXTENSIONS.contains(&amp;e.to_ascii_lowercase().as_str()))\n        .unwrap_or(false)\n}\n\n// ---------------------------------------------------------------------------\n// Tests\n// ---------------------------------------------------------------------------\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n    use crate::db::setup_schema;\n    use rusqlite::Connection;\n    use std::fs;\n    use tempfile::tempdir;\n\n    fn open_test_db() -&gt; Connection {\n        let conn = Connection::open_in_memory().unwrap();\n        setup_schema(&amp;conn).unwrap();\n        conn\n    }\n\n    // -- Unit: parse_exif_date -----------------------------------------------\n\n    #[test]\n    fn test_parse_exif_date_valid() {\n        assert_eq!(\n            parse_exif_date(\"2009:01:05 16:17:00\"),\n            Some((2009, 1, 5))\n        );\n    }\n\n    #[test]\n    fn test_parse_exif_date_no_time() {\n        // Some cameras omit the time portion\n        assert_eq!(parse_exif_date(\"2009:01:05\"), None); // needs space separator\n    }\n\n    #[test]\n    fn test_parse_exif_date_invalid_month() {\n        assert_eq!(parse_exif_date(\"2009:13:05 00:00:00\"), None);\n    }\n\n    #[test]\n    fn test_parse_exif_date_zero_day() {\n        assert_eq!(parse_exif_date(\"2009:01:00 00:00:00\"), None);\n    }\n\n    #[test]\n    fn test_parse_exif_date_garbage() {\n        assert_eq!(parse_exif_date(\"not a date\"), None);\n    }\n\n    // -- Unit: secs_to_ymd ---------------------------------------------------\n\n    #[test]\n    fn test_secs_to_ymd_epoch() {\n        // 1970-01-01\n        assert_eq!(secs_to_ymd(0), (1970, 1, 1));\n    }\n\n    #[test]\n    fn test_secs_to_ymd_known_date() {\n        // 2009-01-05 = days since epoch: 14245\n        // 14245 * 86400 = 1230422400\n        assert_eq!(secs_to_ymd(1230422400), (2009, 1, 5));\n    }\n\n    #[test]\n    fn test_secs_to_ymd_leap_day() {\n        // 2000-02-29 (2000 is a leap year)\n        // Days from 1970-01-01 to 2000-02-29 = 11016\n        assert_eq!(secs_to_ymd(11016 * 86400), (2000, 2, 29));\n    }\n\n    #[test]\n    fn test_secs_to_ymd_negative_clamped() {\n        // Negative timestamps clamp to epoch\n        assert_eq!(secs_to_ymd(-1000), (1970, 1, 1));\n    }\n\n    // -- Unit: is_leap -------------------------------------------------------\n\n    #[test]\n    fn test_is_leap_regular() {\n        assert!(is_leap(2000));\n        assert!(is_leap(2004));\n        assert!(!is_leap(1900));\n        assert!(!is_leap(2001));\n    }\n\n    // -- Unit: is_media ------------------------------------------------------\n\n    #[test]\n    fn test_is_media_known_extensions() {\n        for ext in &amp;[\"jpg\", \"JPG\", \"Jpg\", \"mp4\", \"CR2\", \"heic\", \"thm\"] {\n            assert!(\n                is_media(Path::new(&amp;format!(\"file.{}\", ext))),\n                \"expected {} to be media\",\n                ext\n            );\n        }\n    }\n\n    #[test]\n    fn test_is_media_unknown_extensions() {\n        for ext in &amp;[\"txt\", \"xml\", \"db\", \"rs\", \"pdf\"] {\n            assert!(\n                !is_media(Path::new(&amp;format!(\"file.{}\", ext))),\n                \"expected {} not to be media\",\n                ext\n            );\n        }\n    }\n\n    #[test]\n    fn test_is_media_no_extension() {\n        assert!(!is_media(Path::new(\"README\")));\n    }\n\n    // -- Integration: sort_root ----------------------------------------------\n\n    /// Helper: write bytes to a file, creating parent dirs.\n    fn write_file(path: &amp;Path, content: &amp;[u8]) {\n        if let Some(p) = path.parent() {\n            fs::create_dir_all(p).unwrap();\n        }\n        fs::write(path, content).unwrap();\n    }\n\n    #[test]\n    fn test_sort_root_moves_file_by_mtime() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        // Create a JPEG with a known mtime via filetime\n        let src = root.join(\"photo.jpg\");\n        write_file(&amp;src, b\"fake jpeg content\");\n\n        // Set mtime to 2009-01-05 (Unix: 1230422400)\n        let mtime = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1230422400);\n        fs::File::open(&amp;src)\n            .unwrap()\n            .set_modified(mtime)\n            .unwrap_or(()); // best-effort; fallback if unsupported\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // File should have moved somewhere under root/YYYY/...\n        // We don't assert the exact date since set_modified may not work everywhere,\n        // but we can assert the original location is gone and exactly one jpg exists.\n        let remaining: Vec&lt;_&gt; = WalkDir::new(root)\n            .into_iter()\n            .filter_map(|e| e.ok())\n            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some(\"jpg\"))\n            .collect();\n        assert_eq!(remaining.len(), 1, \"exactly one jpg should exist after sort\");\n        assert_ne!(\n            remaining[0].path(),\n            src.as_path(),\n            \"jpg should have moved from its original location\"\n        );\n    }\n\n    #[test]\n    fn test_sort_root_skips_already_sorted() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        // Place a file already in a correctly-named date dir\n        // We'll derive the expected dir from a fixed timestamp\n        let target_dir = root.join(\"2009\").join(\"2009-01\").join(\"2009-01-05\");\n        let target = target_dir.join(\"photo.jpg\");\n        write_file(&amp;target, b\"already sorted\");\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // File should still be in place\n        assert!(target.exists(), \"already-sorted file should not move\");\n    }\n\n    #[test]\n    fn test_sort_root_removes_true_duplicate() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        let content = b\"identical photo content\";\n\n        // Source file in an unsorted subdir\n        let src_dir = root.join(\"album\");\n        let src = src_dir.join(\"photo.jpg\");\n        write_file(&amp;src, content);\n\n        // Determine where sort_root will try to put it (mtime-based)\n        let secs = fs::metadata(&amp;src)\n            .unwrap()\n            .modified()\n            .unwrap()\n            .duration_since(UNIX_EPOCH)\n            .unwrap()\n            .as_secs() as i64;\n        let (y, m, d) = secs_to_ymd(secs);\n        let dest_dir = root\n            .join(format!(\"{:04}\", y))\n            .join(format!(\"{:04}-{:02}\", y, m))\n            .join(format!(\"{:04}-{:02}-{:02}\", y, m, d));\n        let dest = dest_dir.join(\"photo.jpg\");\n\n        // Pre-place the identical file at the destination\n        write_file(&amp;dest, content);\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // Source should be deleted (true duplicate)\n        assert!(!src.exists(), \"true duplicate source should be removed\");\n        // Destination should still exist\n        assert!(dest.exists(), \"destination copy should remain\");\n    }\n\n    #[test]\n    fn test_sort_root_suffixes_name_collision() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        // Source file\n        let src_dir = root.join(\"album\");\n        let src = src_dir.join(\"photo.jpg\");\n        write_file(&amp;src, b\"version A\");\n\n        // Determine destination dir\n        let secs = fs::metadata(&amp;src)\n            .unwrap()\n            .modified()\n            .unwrap()\n            .duration_since(UNIX_EPOCH)\n            .unwrap()\n            .as_secs() as i64;\n        let (y, m, d) = secs_to_ymd(secs);\n        let dest_dir = root\n            .join(format!(\"{:04}\", y))\n            .join(format!(\"{:04}-{:02}\", y, m))\n            .join(format!(\"{:04}-{:02}-{:02}\", y, m, d));\n\n        // Pre-place a DIFFERENT file with the same name\n        write_file(&amp;dest_dir.join(\"photo.jpg\"), b\"version B\");\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // Source should be gone from original location\n        assert!(!src.exists(), \"source should have moved\");\n        // A suffixed copy should exist at the destination\n        assert!(\n            dest_dir.join(\"photo-1.jpg\").exists(),\n            \"suffixed file photo-1.jpg should exist\"\n        );\n        // Original destination should be untouched\n        assert!(dest_dir.join(\"photo.jpg\").exists());\n    }\n\n    #[test]\n    fn test_sort_root_leaves_non_media_alone() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        let txt = root.join(\"notes.txt\");\n        write_file(&amp;txt, b\"some notes\");\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        assert!(txt.exists(), \"non-media files should not be moved\");\n    }\n\n    #[test]\n    fn test_sort_root_deletes_empty_subdir() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        // Create a subdir with a single photo\n        let album = root.join(\"summer_vacation\");\n        let src = album.join(\"photo.jpg\");\n        write_file(&amp;src, b\"vacation photo\");\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // The photo moved out, so summer_vacation should be gone\n        assert!(\n            !album.exists(),\n            \"empty album subdir should be removed after photos are moved out\"\n        );\n    }\n\n    #[test]\n    fn test_sort_root_keeps_nonempty_subdir() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        let album = root.join(\"mixed\");\n        let photo = album.join(\"photo.jpg\");\n        let notes = album.join(\"notes.txt\");\n        write_file(&amp;photo, b\"photo\");\n        write_file(&amp;notes, b\"notes\");\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // Photo moved, but notes.txt keeps the dir non-empty\n        assert!(\n            album.exists(),\n            \"subdir with remaining non-media files should not be deleted\"\n        );\n        assert!(notes.exists());\n    }\n\n    #[test]\n    fn test_sort_root_with_canon() {\n        let dir = tempdir().unwrap();\n        let src_root = dir.path().join(\"source\");\n        let canon_root = dir.path().join(\"canon\");\n        fs::create_dir_all(&amp;src_root).unwrap();\n        fs::create_dir_all(&amp;canon_root).unwrap();\n        let conn = open_test_db();\n\n        let src = src_root.join(\"photo.jpg\");\n        write_file(&amp;src, b\"canon test photo\");\n\n        sort_root(&amp;conn, &amp;src_root, Some(&amp;canon_root)).unwrap();\n\n        // File should have moved into canon_root, not src_root\n        let moved: Vec&lt;_&gt; = WalkDir::new(&amp;canon_root)\n            .into_iter()\n            .filter_map(|e| e.ok())\n            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some(\"jpg\"))\n            .collect();\n        assert_eq!(moved.len(), 1, \"photo should be under canon root\");\n\n        let in_src: Vec&lt;_&gt; = WalkDir::new(&amp;src_root)\n            .into_iter()\n            .filter_map(|e| e.ok())\n            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some(\"jpg\"))\n            .collect();\n        assert_eq!(in_src.len(), 0, \"photo should not remain under source root\");\n    }\n}",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "94d9adeb-c3d5-44ae-ac92-020926bbeda4",
+  "terminalCommandId": "tool-2962179b-ad6d-4d0e-be43-f0489e66a003",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "345e7021-34da-4cf7-92cd-98f8c4476b06",
+  "terminalCommandId": "tool-c85062a1-229e-434a-85fc-5ca84d62e8a4",
+  "commandLine": {
+    "original": "python3 -c \"import datetime; d=datetime.date(2009,1,5); import calendar; print(int(calendar.timegm(d.timetuple())))\""
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "ee957e96-e636-45c9-a1de-c5c6b7249bc0",
+  "terminalCommandId": "tool-1a1a3df5-a6b4-42e3-927e-9da4fe0040db",
+  "commandLine": {
+    "original": "date -d \"2009-01-05\" +%s"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "b7e19273-13b0-4625-a4eb-7a58b9c58bfb",
+  "terminalCommandId": "tool-5f0bbc64-1d1e-44ea-88ad-b3ef1a2a4288",
+  "commandLine": {
+    "original": "date -ud \"2009-01-05\" +%s"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_multiReplaceString">
+<details>
+<summary>Tool use: **copilot_multiReplaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_multiReplaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Multi-Replace String in Files\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    #[test]\n    fn test_sort_root_skips_already_sorted() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        // Write a file, then figure out what date dir sort_root would compute\n        // from its mtime (we can't set mtime portably, so derive the dir)\n        let tmp = root.join(\"photo.jpg\");\n        write_file(&amp;tmp, b\"already sorted\");\n        let secs = fs::metadata(&amp;tmp)\n            .unwrap()\n            .modified()\n            .unwrap()\n            .duration_since(UNIX_EPOCH)\n            .unwrap()\n            .as_secs() as i64;\n        let (y, m, d) = secs_to_ymd(secs);\n        let target_dir = root\n            .join(format!(\"{:04}\", y))\n            .join(format!(\"{:04}-{:02}\", y, m))\n            .join(format!(\"{:04}-{:02}-{:02}\", y, m, d));\n        let target = target_dir.join(\"photo.jpg\");\n\n        // Move the file to where sort_root would put it\n        fs::create_dir_all(&amp;target_dir).unwrap();\n        fs::rename(&amp;tmp, &amp;target).unwrap();\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // File should still be in place — already sorted\n        assert!(target.exists(), \"already-sorted file should not move\");\n    }\n    #[test]\n    fn test_secs_to_ymd_known_date() {\n        // 2009-01-05 UTC midnight = 1231113600\n        assert_eq!(secs_to_ymd(1231113600), (2009, 1, 5));\n    }\n    #[test]\n    fn test_parse_exif_date_no_time() {\n        // splitn(2, ' ') on a string with no space still yields the whole string\n        // as the date portion, which parses fine.\n        assert_eq!(parse_exif_date(\"2009:01:05\"), Some((2009, 1, 5)));\n    }\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    #[test]\n    fn test_sort_root_skips_already_sorted() {\n        let dir = tempdir().unwrap();\n        let root = dir.path();\n        let conn = open_test_db();\n\n        // Write a file, then figure out what date dir sort_root would compute\n        // from its mtime (we can't set mtime portably, so derive the dir)\n        let tmp = root.join(\"photo.jpg\");\n        write_file(&amp;tmp, b\"already sorted\");\n        let secs = fs::metadata(&amp;tmp)\n            .unwrap()\n            .modified()\n            .unwrap()\n            .duration_since(UNIX_EPOCH)\n            .unwrap()\n            .as_secs() as i64;\n        let (y, m, d) = secs_to_ymd(secs);\n        let target_dir = root\n            .join(format!(\"{:04}\", y))\n            .join(format!(\"{:04}-{:02}\", y, m))\n            .join(format!(\"{:04}-{:02}-{:02}\", y, m, d));\n        let target = target_dir.join(\"photo.jpg\");\n\n        // Move the file to where sort_root would put it\n        fs::create_dir_all(&amp;target_dir).unwrap();\n        fs::rename(&amp;tmp, &amp;target).unwrap();\n\n        sort_root(&amp;conn, root, None).unwrap();\n\n        // File should still be in place — already sorted\n        assert!(target.exists(), \"already-sorted file should not move\");\n    }    #[test]\n    fn test_secs_to_ymd_known_date() {\n        // 2009-01-05 UTC midnight = 1231113600\n        assert_eq!(secs_to_ymd(1231113600), (2009, 1, 5));\n    }    #[test]\n    fn test_parse_exif_date_no_time() {\n        // splitn(2, ' ') on a string with no space still yields the whole string\n        // as the date portion, which parses fine.\n        assert_eq!(parse_exif_date(\"2009:01:05\"), Some((2009, 1, 5)));\n    }",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "abd048a3-8a55-4836-9182-be409ca1db2f",
+  "terminalCommandId": "tool-fa150fb6-0594-4612-b538-bf29627bbcb3",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1",
+    "toolEdited": "cargo test 2&gt;&amp;1"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Let me read the photos.rs file to understand what's testable: Good. I'll add a `#[cfg(test)]` module covering: `parse_exif_date`, `secs_to_ymd`, `is_media`, `is_leap`, and integration tests for `sort_root` (move, skip-already-sorted, true-duplicate removal, name-collision suffix, non-media left alone, empty-dir cleanup): Three failures to fix:
+
+1. **`test_parse_exif_date_no_time`** — `"2009:01:05"` actually parses successfully (the `splitn(2, ' ')` gives `["2009:01:05"]`, which is valid). The comment in the test was wrong — fix the assertion to `Some`.
+2. **`test_secs_to_ymd_known_date`** — my timestamp calculation was off; fix it to use the correct value.
+3. **`test_sort_root_skips_already_sorted`** — the test places the file in a hardcoded `2009-01-05` dir, but `sort_root` uses mtime (today's date) not the path name, so it moves it. Fix the test to use a dynamically-computed dir based on the file's actual mtime.  works in UTC days, so use `1231113600`. Now fix all three: 47 tests, all passing. The suite now covers:
+
+**Unit tests** — `parse_exif_date` (valid, no-time, bad month, zero day, garbage), `secs_to_ymd` (epoch, known date, leap day, negative clamp), `is_leap`, `is_media` (known extensions case-insensitive, unknown, no extension)
+
+**Integration tests** — move by mtime, skip already-sorted, true duplicate removed, name collision gets `-1` suffix, non-media files untouched, empty subdir deleted after photos move out, non-empty subdir preserved, canon root used as destination
+
+---
+
+_**User (2026-03-16 20:18Z)**_
+
+let's slightly simplify the logic by always requiring a --canon for --sort-photos.  that way you don't have to handle the case when no canon is provided.  it is possible to only have a canon directory
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/main.rs#1-1), lines 1 to 180</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/main.rs#1-1), lines 1 to 180
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/photos.rs#33-33), lines 33 to 60</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/photos.rs#33-33), lines 33 to 60
+
+</details>
+</tool-use>
+
+---
+
+Let me check the current state of both files first: Now check the `sort_photos` signature and the `no_canon` path in `photos.rs`: 
+
+---
+

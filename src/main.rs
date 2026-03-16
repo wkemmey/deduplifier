@@ -1,6 +1,7 @@
 mod db;
 mod duplicates;
 mod hashing;
+mod photos;
 mod scan;
 mod similar;
 
@@ -11,6 +12,7 @@ use std::path::{Path, PathBuf};
 use db::init_database;
 use duplicates::{find_duplicate_directories, find_duplicate_files};
 use hashing::count_files;
+use photos::sort_photos;
 use scan::scan_directory;
 use similar::find_similar_directories;
 
@@ -22,31 +24,44 @@ struct Args {
     #[arg(required = true)]
     directories: Vec<PathBuf>,
 
+    // ── Main operation (exactly one required) ────────────────────────────────
+    /// find duplicate directories and optionally delete them (see --delete)
+    #[arg(long)]
+    dup_dirs: bool,
+
+    /// find duplicate files
+    #[arg(long)]
+    dup_files: bool,
+
+    /// find and interactively merge similar (but non-identical) directories;
+    /// optionally specify a similarity threshold (0.0–1.0, default 0.85)
+    #[arg(long, value_name = "THRESHOLD")]
+    similarity: Option<Option<f64>>,
+
+    /// merge two directory trees together (not yet implemented)
+    #[arg(long)]
+    merge: bool,
+
+    /// sort photos into a date-based folder hierarchy (not yet implemented)
+    #[arg(long)]
+    sort_photos: bool,
+
+    // ── Common options ────────────────────────────────────────────────────────
     /// database file path
-    #[arg(short, long, default_value = "deduplifier.db")]
+    #[arg(long, default_value = "deduplifier.db")]
     database: PathBuf,
 
-    /// also list duplicate files (in addition to duplicate directories)
-    #[arg(long)]
-    files: bool,
-
-    /// interactively delete duplicate directories
-    #[arg(long)]
-    delete: bool,
-
-    /// canonical directory: when a duplicate exists under this path, auto-select it as the one to keep
+    /// canonical directory: auto-selects the keeper for duplicates; required by --sort-photos as the root for date-based dirs
     #[arg(long)]
     canon: Option<PathBuf>,
+
+    /// interactively delete duplicate directories (used with --dup-dirs)
+    #[arg(long)]
+    delete: bool,
 
     /// skip per-deletion confirmation prompts when --canon has auto-selected the keeper
     #[arg(long)]
     no_confirmation: bool,
-
-    /// find and interactively merge similar (but non-identical) directories;
-    /// optionally specify a threshold (0.0-1.0, default 0.90).
-    /// When set, duplicate detection is skipped — re-run without this flag afterward.
-    #[arg(long, value_name = "THRESHOLD")]
-    similarity: Option<f64>,
 }
 
 /// Build the ordered list of directories to scan: canon first (if provided and not already
@@ -69,6 +84,30 @@ pub fn build_scan_list<'a>(
 
 fn main() -> Result<()> {
     let args = Args::parse();
+
+    // Exactly one main operation must be specified.
+    let op_count = [
+        args.dup_dirs,
+        args.dup_files,
+        args.similarity.is_some(),
+        args.merge,
+        args.sort_photos,
+    ]
+    .iter()
+    .filter(|&&b| b)
+    .count();
+    if op_count == 0 {
+        eprintln!(
+            "Error: specify one of --dup-dirs, --dup-files, --similarity, --merge, or --sort-photos."
+        );
+        std::process::exit(1);
+    }
+    if op_count > 1 {
+        eprintln!(
+            "Error: --dup-dirs, --dup-files, --similarity, --merge, and --sort-photos are mutually exclusive."
+        );
+        std::process::exit(1);
+    }
 
     let conn = init_database(&args.database)?;
     let mut total_invalid_paths = 0usize;
@@ -105,11 +144,7 @@ fn main() -> Result<()> {
 
     let scanned_paths: Vec<&Path> = all_directories.iter().map(|p| p.as_path()).collect();
 
-    if let Some(threshold) = args.similarity {
-        println!("\n=== Finding similar (near-duplicate) directories ===");
-        find_similar_directories(&conn, threshold, &scanned_paths, true)?;
-        println!("\nNote: duplicate detection was skipped. Re-run without --similarity to find and delete exact duplicates.");
-    } else {
+    if args.dup_dirs {
         println!("\n=== Finding duplicate directories ===");
         find_duplicate_directories(
             &conn,
@@ -118,11 +153,36 @@ fn main() -> Result<()> {
             args.no_confirmation,
             &scanned_paths,
         )?;
-
-        if args.files {
-            println!("\n=== Finding duplicate files ===");
-            find_duplicate_files(&conn)?;
+    } else if args.dup_files {
+        println!("\n=== Finding duplicate files ===");
+        find_duplicate_files(&conn)?;
+    } else if let Some(threshold_opt) = args.similarity {
+        let threshold = threshold_opt.unwrap_or(0.85);
+        println!(
+            "\n=== Finding similar (near-duplicate) directories (threshold: {:.0}%) ===",
+            threshold * 100.0
+        );
+        find_similar_directories(&conn, threshold, &scanned_paths, true)?;
+    } else if args.merge {
+        eprintln!("Error: --merge is not yet implemented.");
+        std::process::exit(1);
+    } else if args.sort_photos {
+        if !args.delete || !args.no_confirmation {
+            eprintln!(
+                "Error: --sort-photos requires both --delete and --no-confirmation, \
+                 because it will move and delete files without prompting."
+            );
+            std::process::exit(1);
         }
+        let canon = match args.canon.as_deref() {
+            Some(c) => c,
+            None => {
+                eprintln!("Error: --sort-photos requires --canon to specify where date-based directories will be created.");
+                std::process::exit(1);
+            }
+        };
+        println!("\n=== Sorting photos into date-based directories ===");
+        sort_photos(&conn, &scanned_paths, canon)?;
     }
 
     Ok(())
