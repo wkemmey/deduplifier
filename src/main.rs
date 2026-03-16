@@ -114,7 +114,10 @@ fn main() -> Result<()> {
     let conn = init_database(&args.database)?;
     let mut total_invalid_paths = 0usize;
 
-    let all_directories = build_scan_list(&args.directories, args.canon.as_ref());
+    let all_directories: Vec<&Path> = build_scan_list(&args.directories, args.canon.as_ref())
+        .into_iter()
+        .map(|p| p.as_path())
+        .collect();
 
     for directory in &all_directories {
         if !directory.exists() {
@@ -140,11 +143,9 @@ fn main() -> Result<()> {
             "\nWarning: {} file path(s) with invalid UTF-8 were skipped during this scan.",
             total_invalid_paths
         );
-        eprintln!("Please rename these files and re-run to get duplicate results.");
+        eprintln!("Please rename these files and re-run to continue.");
         return Ok(());
     }
-
-    let scanned_paths: Vec<&Path> = all_directories.iter().map(|p| p.as_path()).collect();
 
     if args.dup_dirs {
         println!("\n=== Finding duplicate directories ===");
@@ -153,8 +154,8 @@ fn main() -> Result<()> {
             args.delete,
             args.canon.as_deref(),
             args.no_confirmation,
-            &scanned_paths,
-        )?;
+            &all_directories,
+        )?
     } else if args.dup_files {
         println!("\n=== Finding duplicate files ===");
         find_duplicate_files(&conn)?;
@@ -164,7 +165,7 @@ fn main() -> Result<()> {
             "\n=== Finding similar (near-duplicate) directories (threshold: {:.0}%) ===",
             threshold * 100.0
         );
-        find_similar_directories(&conn, threshold, &scanned_paths, true)?;
+        find_similar_directories(&conn, threshold, &all_directories, true)?
     } else if args.merge {
         if !args.delete {
             eprintln!(
@@ -180,7 +181,7 @@ fn main() -> Result<()> {
             }
         };
         // sources = everything except canon
-        let sources: Vec<&Path> = scanned_paths
+        let sources: Vec<&Path> = all_directories
             .iter()
             .copied()
             .filter(|&p| p != canon)
@@ -203,7 +204,7 @@ fn main() -> Result<()> {
             }
         };
         println!("\n=== Sorting photos into date-based directories ===");
-        sort_photos(&conn, &scanned_paths, canon)?;
+        sort_photos(&conn, &all_directories, canon)?;
     }
 
     Ok(())
