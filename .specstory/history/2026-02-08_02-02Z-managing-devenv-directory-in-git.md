@@ -14643,3 +14643,86 @@ Yes. Remove `scanned_paths` entirely and just use `all_directories` everywhere: 
 
 ---
 
+_**User (2026-03-16 23:00Z)**_
+
+all_directories is slightly better descriptively than scanned_paths, or do you disagree?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+I'd actually argue the opposite. `all_directories` describes what it *is* — the input list. `scanned_paths` described what *happened to it* — these are the directories that were actually scanned and are now reflected in the DB. That distinction matters because the loop before it skips non-existent directories, so in theory `all_directories` and "what's actually in the DB" could diverge.
+
+That said, the skip-if-not-exists case is an edge case and the name `all_directories` is clear enough in context. It's not a meaningful difference either way.
+
+---
+
+_**User (2026-03-16 23:01Z)**_
+
+if there's a canon, it will be the first directory in all_directories.  how are we keeping track of whether the first directory is canon?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+We're not — we just re-derive it from `args.canon` whenever we need it. You can see this pattern repeated in each operation branch:
+
+```rust
+let canon = match args.canon.as_deref() {
+    Some(c) => c,
+    None => { eprintln!(...); std::process::exit(1); }
+};
+```
+
+The fact that canon is first in `all_directories` is only meaningful for scan ordering (so canon's hashes are in the DB before the sources are scanned). After that, canon's identity is always pulled directly from `args.canon`, not inferred from position in the list.
+
+---
+
+_**User (2026-03-17 01:01Z)**_
+
+what does as_deref() do
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+`as_deref()` converts `Option<PathBuf>` to `Option<&Path>`.
+
+It's the `Option` equivalent of calling `.as_ref()` followed by `.deref()`. In one step:
+
+- `Option<PathBuf>` → `Option<&Path>`
+
+Without it, `args.canon.as_ref()` would give you `Option<&PathBuf>`, and you'd still need to deref to get `&Path`. `as_deref()` does both in one call.
+
+The general pattern works for any `Option<T>` where `T` implements `Deref` — so it also works for `Option<String>` → `Option<&str>`, which you see very commonly in Rust code.
+
+---
+
+_**User (2026-03-17 01:05Z)**_
+
+is it common for rust to have no blank lines to break up sections of the code? is this enforced by cargo fmt?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Blank lines are completely up to you — `rustfmt` doesn't add or remove them (with one exception: it will collapse multiple consecutive blank lines down to one). So if you put a blank line between logical sections, `rustfmt` leaves it alone.
+
+The code just happens to not have many because it was written incrementally without much attention to visual grouping. You're welcome to add them wherever you think they help readability — `cargo fmt` won't touch them.
+
+---
+
+_**User (2026-03-17 01:12Z)**_
+
+in merge_one, we start by scanning both directories.  won't we alreay have scanned them in the beginning of fn main?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Yes, for the normal case you're right — `main` already scanned everything before dispatching to `merge_into_canon`. The re-scan in `merge_one` was added to ensure the DB is fresh for the similarity score, but it's redundant work.
+
+The one edge case it was protecting against: if `--merge` is used 
+
+---
+

@@ -7,8 +7,7 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use walkdir::WalkDir;
 
-use crate::hashing::{count_files, path_to_str};
-use crate::scan::scan_directory;
+use crate::hashing::path_to_str;
 use crate::similar::{build_dir_index, files_for_dir};
 
 const SIMILARITY_WARN_THRESHOLD: f64 = 0.85;
@@ -56,16 +55,6 @@ fn merge_one(
     no_confirmation: bool,
     reader: &mut impl BufRead,
 ) -> Result<()> {
-    // Always (re-)scan both trees so the DB is up-to-date before we compute
-    // similarity or make any decisions.
-    println!("  Scanning canon: {}", canon.display());
-    let canon_count = count_files(canon).unwrap_or(0);
-    scan_directory(conn, canon, canon_count, false)?;
-
-    println!("  Scanning source: {}", source.display());
-    let source_count = count_files(source).unwrap_or(0);
-    scan_directory(conn, source, source_count, false)?;
-
     // Build an in-memory index of both trees for scoring.
     // We pass both roots so the index covers exactly what we need.
     let both: &[&Path] = &[canon, source];
