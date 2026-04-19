@@ -60,6 +60,14 @@ pub fn should_update_file(conn: &Connection, path: &Path, modified: SystemTime) 
     }
 }
 
+// ------------------------------------------------------------------
+//
+//
+// TESTS
+//
+//
+// ------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
