@@ -24,7 +24,6 @@ const MEDIA_EXTENSIONS: &[&str] = &[
 
 // Sanity-check range for EXIF dates
 const YEAR_MIN: i32 = 1990;
-const YEAR_MAX: i32 = 2035;
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -195,7 +194,7 @@ fn exif_date(path: &Path) -> Option<(i32, u32, u32)> {
                     // Format: "YYYY:MM:DD HH:MM:SS"
                     if let Ok(s) = std::str::from_utf8(bytes) {
                         if let Some((year, month, day)) = parse_exif_date(s) {
-                            if year >= YEAR_MIN && year <= YEAR_MAX {
+                            if year >= YEAR_MIN {
                                 return Some((year, month, day));
                             }
                         }

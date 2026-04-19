@@ -72,21 +72,19 @@ fn merge_one(
     let intersection = canon_hashes.intersection(&source_hashes).count();
     let union = canon_hashes.union(&source_hashes).count();
     let score = if union == 0 {
-        1.0
+        0.0
     } else {
         intersection as f64 / union as f64
     };
 
-    if union > 0 {
-        println!(
-            "  Similarity to canon: {:.1}%  ({} shared hashes, {} total unique)",
-            score * 100.0,
-            intersection,
-            union,
-        );
-    }
+    println!(
+        "  Similarity to canon: {:.1}%  ({} shared hashes, {} total unique)",
+        score * 100.0,
+        intersection,
+        union,
+    );
 
-    if union > 0 && score < SIMILARITY_WARN_THRESHOLD {
+    if score < SIMILARITY_WARN_THRESHOLD {
         print!(
             "  Warning: similarity is below {:.0}%. Merge anyway? [y/N] > ",
             SIMILARITY_WARN_THRESHOLD * 100.0
