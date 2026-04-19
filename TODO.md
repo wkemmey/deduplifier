@@ -38,6 +38,6 @@ refactor so all file operations are in one place
 
 refactor so test helpers can help tests be more dry by setting up data for test
 
-
+refactor so ui is separate from logic--e.g., similar.rs shouldn't have both computation and prints
 
 

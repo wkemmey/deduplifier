@@ -444,12 +444,13 @@ fn merge_into(
     Ok(copied)
 }
 
-pub fn find_similar_directories(
+/// Pure computation: find all similar-but-not-identical directory pairs at or
+/// above `threshold`, sorted by score descending. No I/O or prompting.
+fn compute_similar_pairs(
     conn: &Connection,
     threshold: f64,
     scanned_dirs: &[&Path],
-    merge: bool,
-) -> Result<()> {
+) -> Result<Vec<SimilarPair>> {
     // ------------------------------------------------------------------
     // Phase 1: load everything into memory (2 queries total)
     // ------------------------------------------------------------------
@@ -597,6 +598,17 @@ pub fn find_similar_directories(
 
     // Sort by score descending
     similar_pairs.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+
+    Ok(similar_pairs)
+}
+
+pub fn find_similar_directories(
+    conn: &Connection,
+    threshold: f64,
+    scanned_dirs: &[&Path],
+    merge: bool,
+) -> Result<()> {
+    let similar_pairs = compute_similar_pairs(conn, threshold, scanned_dirs)?;
 
     if similar_pairs.is_empty() {
         println!("No similar (but non-identical) directory pairs found.");
@@ -746,33 +758,17 @@ mod tests {
         conn
     }
 
-    #[test]
-    fn test_find_similar_no_leaves() {
-        let conn = open_test_db();
-        find_similar_directories(&conn, 0.9, &[], false).unwrap();
-    }
-
-    #[test]
-    fn test_find_similar_identical_leaves_not_reported() {
-        let conn = open_test_db();
-        conn.execute_batch(
-            "INSERT INTO directories VALUES ('/a/photos', 'hash1', 1000);
-             INSERT INTO directories VALUES ('/b/photos', 'hash1', 1000);
-             INSERT INTO files VALUES ('/a/photos/img1.jpg', 'filehash1', 500, 1000);
-             INSERT INTO files VALUES ('/b/photos/img1.jpg', 'filehash1', 500, 1000);",
-        )
-        .unwrap();
-        find_similar_directories(&conn, 0.9, &[], false).unwrap();
-    }
-
-    #[test]
-    fn test_find_similar_detects_near_duplicate() {
-        let conn = open_test_db();
+    /// Insert the two standard test directories and `shared_count` files that
+    /// exist (with the same hash) in both `/a/photos` and `/b/photos`.
+    /// Files are named `img1.jpg` … `img{shared_count}.jpg`.
+    /// Returns the connection so callers can add extra rows to create the
+    /// specific scenario they are testing.
+    fn setup_two_photo_dirs(conn: &Connection, shared_count: usize) {
         let mut batch = String::from(
             "INSERT INTO directories VALUES ('/a/photos', 'hashA', 5000);
-             INSERT INTO directories VALUES ('/b/photos', 'hashB', 4500);",
+             INSERT INTO directories VALUES ('/b/photos', 'hashB', 5000);",
         );
-        for i in 1..=9 {
+        for i in 1..=shared_count {
             batch.push_str(&format!(
                 "INSERT INTO files VALUES ('/a/photos/img{}.jpg', 'fh{}', 500, 1000);",
                 i, i
@@ -782,31 +778,69 @@ mod tests {
                 i, i
             ));
         }
-        batch.push_str("INSERT INTO files VALUES ('/a/photos/Thumbs.db', 'thumbhash', 10, 1000);");
         conn.execute_batch(&batch).unwrap();
-        find_similar_directories(&conn, 0.85, &[], false).unwrap();
+    }
+
+    #[test]
+    fn test_find_similar_empty_db() {
+        // Smoke test: empty database should return Ok(()) without panicking.
+        let conn = open_test_db();
+        let pairs = compute_similar_pairs(&conn, 0.9, &[]).unwrap();
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn test_find_similar_identical_leaves_not_reported() {
+        // Base: 1 shared file → both dirs are identical; should not be reported.
+        let conn = open_test_db();
+        setup_two_photo_dirs(&conn, 1);
+        let pairs = compute_similar_pairs(&conn, 0.9, &[]).unwrap();
+        assert!(
+            pairs.is_empty(),
+            "identical dirs should not be reported as similar"
+        );
+    }
+
+    #[test]
+    fn test_find_similar_detects_near_duplicate() {
+        // Base: 9 shared files, then add 1 file only in A.
+        // Score = 9/10 = 0.90 ≥ threshold 0.85 → should be reported.
+        let conn = open_test_db();
+        setup_two_photo_dirs(&conn, 9);
+        conn.execute_batch(
+            "INSERT INTO files VALUES ('/a/photos/Thumbs.db', 'thumbhash', 10, 1000);",
+        )
+        .unwrap();
+        let pairs = compute_similar_pairs(&conn, 0.85, &[]).unwrap();
+        assert_eq!(pairs.len(), 1, "expected exactly one similar pair");
+        assert!(pairs[0].score >= 0.85, "score should meet threshold");
+        assert_eq!(pairs[0].only_in_a.len(), 1, "Thumbs.db should be only-in-A");
+        assert!(pairs[0].only_in_b.is_empty());
+        assert!(pairs[0].conflicts.is_empty());
     }
 
     #[test]
     fn test_find_similar_below_threshold_not_reported() {
+        // Base: 1 shared file, then add 9 files unique to each side.
+        // Score = 1/19 ≈ 0.05 < threshold 0.9 → should not be reported.
         let conn = open_test_db();
-        let mut batch = String::from(
-            "INSERT INTO directories VALUES ('/a/photos', 'hashA', 5000);
-             INSERT INTO directories VALUES ('/b/photos', 'hashB', 5000);",
-        );
+        setup_two_photo_dirs(&conn, 1);
+        let mut batch = String::new();
         for i in 1..=9 {
             batch.push_str(&format!(
-                "INSERT INTO files VALUES ('/a/photos/imgA{}.jpg', 'fhA{}', 500, 1000);",
+                "INSERT INTO files VALUES ('/a/photos/only_a{}.jpg', 'fhA{}', 500, 1000);",
                 i, i
             ));
             batch.push_str(&format!(
-                "INSERT INTO files VALUES ('/b/photos/imgB{}.jpg', 'fhB{}', 500, 1000);",
+                "INSERT INTO files VALUES ('/b/photos/only_b{}.jpg', 'fhB{}', 500, 1000);",
                 i, i
             ));
         }
-        batch.push_str("INSERT INTO files VALUES ('/a/photos/shared.jpg', 'shared', 500, 1000);");
-        batch.push_str("INSERT INTO files VALUES ('/b/photos/shared.jpg', 'shared', 500, 1000);");
         conn.execute_batch(&batch).unwrap();
-        find_similar_directories(&conn, 0.9, &[], false).unwrap();
+        let pairs = compute_similar_pairs(&conn, 0.9, &[]).unwrap();
+        assert!(
+            pairs.is_empty(),
+            "dirs below threshold should not be reported"
+        );
     }
 }

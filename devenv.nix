@@ -38,7 +38,6 @@
 
   # git hooks for code quality
   git-hooks.hooks = {
-    rustfmt.enable = true;  # auto-format code
     clippy.enable = true;   # linter
   };
 
