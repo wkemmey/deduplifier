@@ -34,6 +34,10 @@ Options:
 
   add --prune, which deletes all files in a directory tree that have duplicates elsewhere -- just thinking about this, not sure yet
 
+refactor so all file operations are in one place
+
+refactor so test helpers can help tests be more dry by setting up data for test
+
 
 
 
