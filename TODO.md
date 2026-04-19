@@ -41,3 +41,6 @@ refactor so test helpers can help tests be more dry by setting up data for test
 refactor so ui is separate from logic--e.g., similar.rs shouldn't have both computation and prints
 
 
+remember to put updated direnv.nix in nixos config project
+
+do i want to rename should_update_file to something that makes more sense and is more readable?

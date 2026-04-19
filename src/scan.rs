@@ -122,7 +122,10 @@ pub fn scan_directory(
         "SELECT COUNT(*) FROM files
          LEFT JOIN visited_files ON files.path = visited_files.path
          WHERE files.path LIKE ?1 AND visited_files.path IS NULL",
-        params![format!("{}%", root_str)],
+        params![{
+            let sep = std::path::MAIN_SEPARATOR;
+            format!("{}{sep}%", root_str.trim_end_matches(sep))
+        }],
         |row| row.get(0),
     )?;
 
@@ -150,7 +153,10 @@ pub fn scan_directory(
                      LEFT JOIN visited_files ON files.path = visited_files.path
                      WHERE files.path LIKE ?1 AND visited_files.path IS NULL
                  )",
-                params![format!("{}%", root_str)],
+                params![{
+                    let sep = std::path::MAIN_SEPARATOR;
+                    format!("{}{sep}%", root_str.trim_end_matches(sep))
+                }],
             )?;
             println!("Deleted {} stale file(s) from the database.", stale_count);
         } else if prompt_stale {
