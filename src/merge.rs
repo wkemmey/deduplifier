@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use walkdir::WalkDir;
 
-use crate::utils::path_to_str;
 use crate::similar::{build_dir_index, files_for_dir};
+use crate::utils::path_to_str;
 
 const SIMILARITY_WARN_THRESHOLD: f64 = 0.85;
 

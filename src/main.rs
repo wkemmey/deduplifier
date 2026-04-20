@@ -1,6 +1,6 @@
 mod db;
-mod file_system;
 mod duplicates;
+mod file_system;
 mod hashing;
 mod merge;
 mod photos;

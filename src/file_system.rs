@@ -12,8 +12,7 @@ use anyhow::{Context, Result};
 /// filesystems it falls back to copy-then-delete.
 pub fn move_file(from: &Path, to: &Path) -> Result<()> {
     ensure_parent_exists(to)?;
-    fs::rename(from, to)
-        .with_context(|| format!("moving {} -> {}", from.display(), to.display()))
+    fs::rename(from, to).with_context(|| format!("moving {} -> {}", from.display(), to.display()))
 }
 
 /// Copy a file from `src` to `dst`, creating parent directories as needed.
@@ -27,8 +26,7 @@ pub fn copy_file(src: &Path, dst: &Path) -> Result<()> {
 
 /// Delete a single file.
 pub fn delete_file(path: &Path) -> Result<()> {
-    fs::remove_file(path)
-        .with_context(|| format!("deleting file {}", path.display()))
+    fs::remove_file(path).with_context(|| format!("deleting file {}", path.display()))
 }
 
 // ---------------------------------------------------------------------------
@@ -37,8 +35,7 @@ pub fn delete_file(path: &Path) -> Result<()> {
 
 /// Create `path` and all missing parent directories.
 pub fn ensure_dir_exists(path: &Path) -> Result<()> {
-    fs::create_dir_all(path)
-        .with_context(|| format!("creating directory {}", path.display()))
+    fs::create_dir_all(path).with_context(|| format!("creating directory {}", path.display()))
 }
 
 /// Remove `path` only if it is empty.
@@ -54,8 +51,7 @@ pub fn delete_dir_if_empty(path: &Path) -> Result<bool> {
 
 /// Recursively delete `path` and everything inside it.
 pub fn delete_dir_all(path: &Path) -> Result<()> {
-    fs::remove_dir_all(path)
-        .with_context(|| format!("removing directory tree {}", path.display()))
+    fs::remove_dir_all(path).with_context(|| format!("removing directory tree {}", path.display()))
 }
 
 // ---------------------------------------------------------------------------

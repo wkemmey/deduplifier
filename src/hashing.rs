@@ -66,7 +66,11 @@ pub fn compute_directory_hash(
     for child in db::child_directories(conn, dir_path)? {
         let child_path = PathBuf::from(&child.path);
         if let Some(dirname) = child_path.file_name() {
-            children.push((dirname.to_string_lossy().to_string(), child.hash, child.size as u64));
+            children.push((
+                dirname.to_string_lossy().to_string(),
+                child.hash,
+                child.size as u64,
+            ));
         }
     }
 
@@ -101,7 +105,7 @@ pub fn compute_directory_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{setup_schema, upsert_directory, directories_with_hash, EMPTY_DIR_HASH};
+    use crate::db::{directories_with_hash, setup_schema, upsert_directory, EMPTY_DIR_HASH};
     use std::fs;
     use tempfile::tempdir;
 
@@ -208,18 +212,30 @@ mod tests {
         files_by_dir.insert(
             dir.path().to_path_buf(),
             vec![
-                FileEntry { path: dir.path().join("a.txt").to_str().unwrap().to_string(), hash: "hash_a".to_string(), size: 10 },
-                FileEntry { path: dir.path().join("b.txt").to_str().unwrap().to_string(), hash: "hash_b".to_string(), size: 20 },
+                FileEntry {
+                    path: dir.path().join("a.txt").to_str().unwrap().to_string(),
+                    hash: "hash_a".to_string(),
+                    size: 10,
+                },
+                FileEntry {
+                    path: dir.path().join("b.txt").to_str().unwrap().to_string(),
+                    hash: "hash_b".to_string(),
+                    size: 20,
+                },
             ],
         );
 
         let conn1 = open_test_db();
         compute_directory_hash(&conn1, dir.path(), &files_by_dir).unwrap();
-        let hash1: String = conn1.query_row("SELECT hash FROM directories LIMIT 1", [], |r| r.get(0)).unwrap();
+        let hash1: String = conn1
+            .query_row("SELECT hash FROM directories LIMIT 1", [], |r| r.get(0))
+            .unwrap();
 
         let conn2 = open_test_db();
         compute_directory_hash(&conn2, dir.path(), &files_by_dir).unwrap();
-        let hash2: String = conn2.query_row("SELECT hash FROM directories LIMIT 1", [], |r| r.get(0)).unwrap();
+        let hash2: String = conn2
+            .query_row("SELECT hash FROM directories LIMIT 1", [], |r| r.get(0))
+            .unwrap();
 
         assert_eq!(hash1, hash2);
     }
@@ -233,19 +249,31 @@ mod tests {
         let mut files_a = HashMap::new();
         files_a.insert(
             dir.path().to_path_buf(),
-            vec![FileEntry { path: dir.path().join("a.txt").to_str().unwrap().to_string(), hash: "hash_a".to_string(), size: 10 }],
+            vec![FileEntry {
+                path: dir.path().join("a.txt").to_str().unwrap().to_string(),
+                hash: "hash_a".to_string(),
+                size: 10,
+            }],
         );
         let mut files_b = HashMap::new();
         files_b.insert(
             dir.path().to_path_buf(),
-            vec![FileEntry { path: dir.path().join("a.txt").to_str().unwrap().to_string(), hash: "hash_different".to_string(), size: 10 }],
+            vec![FileEntry {
+                path: dir.path().join("a.txt").to_str().unwrap().to_string(),
+                hash: "hash_different".to_string(),
+                size: 10,
+            }],
         );
 
         compute_directory_hash(&conn1, dir.path(), &files_a).unwrap();
         compute_directory_hash(&conn2, dir.path(), &files_b).unwrap();
 
-        let hash1: String = conn1.query_row("SELECT hash FROM directories LIMIT 1", [], |r| r.get(0)).unwrap();
-        let hash2: String = conn2.query_row("SELECT hash FROM directories LIMIT 1", [], |r| r.get(0)).unwrap();
+        let hash1: String = conn1
+            .query_row("SELECT hash FROM directories LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        let hash2: String = conn2
+            .query_row("SELECT hash FROM directories LIMIT 1", [], |r| r.get(0))
+            .unwrap();
         assert_ne!(hash1, hash2);
     }
 
@@ -269,17 +297,24 @@ mod tests {
         upsert_directory(&conn2, &grandchild, "grandchild_hash", 25).unwrap();
         compute_directory_hash(&conn2, dir.path(), &files_by_dir).unwrap();
 
-        let hash1: String = conn1.query_row(
-            "SELECT hash FROM directories WHERE path = ?1",
-            rusqlite::params![dir.path().to_str().unwrap()],
-            |r| r.get(0),
-        ).unwrap();
-        let hash2: String = conn2.query_row(
-            "SELECT hash FROM directories WHERE path = ?1",
-            rusqlite::params![dir.path().to_str().unwrap()],
-            |r| r.get(0),
-        ).unwrap();
-        assert_eq!(hash1, hash2, "grandchild should not affect parent directory hash");
+        let hash1: String = conn1
+            .query_row(
+                "SELECT hash FROM directories WHERE path = ?1",
+                rusqlite::params![dir.path().to_str().unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let hash2: String = conn2
+            .query_row(
+                "SELECT hash FROM directories WHERE path = ?1",
+                rusqlite::params![dir.path().to_str().unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            hash1, hash2,
+            "grandchild should not affect parent directory hash"
+        );
     }
 
     #[test]
@@ -291,14 +326,24 @@ mod tests {
         files_by_dir.insert(
             dir.path().to_path_buf(),
             vec![
-                FileEntry { path: dir.path().join("a.txt").to_str().unwrap().to_string(), hash: "h1".to_string(), size: 100 },
-                FileEntry { path: dir.path().join("b.txt").to_str().unwrap().to_string(), hash: "h2".to_string(), size: 200 },
+                FileEntry {
+                    path: dir.path().join("a.txt").to_str().unwrap().to_string(),
+                    hash: "h1".to_string(),
+                    size: 100,
+                },
+                FileEntry {
+                    path: dir.path().join("b.txt").to_str().unwrap().to_string(),
+                    hash: "h2".to_string(),
+                    size: 200,
+                },
             ],
         );
 
         compute_directory_hash(&conn, dir.path(), &files_by_dir).unwrap();
 
-        let size: i64 = conn.query_row("SELECT size FROM directories LIMIT 1", [], |r| r.get(0)).unwrap();
+        let size: i64 = conn
+            .query_row("SELECT size FROM directories LIMIT 1", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(size, 300);
     }
 }
