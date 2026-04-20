@@ -1,4 +1,5 @@
 mod db;
+mod file_system;
 mod duplicates;
 mod hashing;
 mod merge;
