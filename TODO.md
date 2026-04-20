@@ -44,3 +44,7 @@ refactor so ui is separate from logic--e.g., similar.rs shouldn't have both comp
 remember to put updated direnv.nix in nixos config project
 
 do i want to rename should_update_file to something that makes more sense and is more readable?
+
+run tests on windows
+
+should count_files be moved to main, or wherever the gui code is?/////////////////////////

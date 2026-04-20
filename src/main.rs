@@ -6,6 +6,7 @@ mod merge;
 mod photos;
 mod scan;
 mod similar;
+mod utils;
 
 use anyhow::Result;
 use clap::Parser;

@@ -1,5 +1,6 @@
 use crate::db::should_update_file;
-use crate::hashing::{compute_directory_hash, compute_file_hash, path_to_str};
+use crate::hashing::{compute_directory_hash, compute_file_hash};
+use crate::utils::path_to_str;
 use anyhow::Result;
 use rusqlite::{params, Connection};
 use std::collections::HashMap;

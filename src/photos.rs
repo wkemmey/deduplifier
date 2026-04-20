@@ -8,7 +8,8 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use walkdir::WalkDir;
 
-use crate::hashing::{compute_file_hash, path_to_str};
+use crate::hashing::compute_file_hash;
+use crate::utils::path_to_str;
 
 // ---------------------------------------------------------------------------
 // Known media extensions (lowercase)

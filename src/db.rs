@@ -1,4 +1,4 @@
-use crate::hashing::path_to_str;
+use crate::utils::path_to_str;
 use anyhow::Result;
 use rusqlite::{params, Connection};
 use std::path::Path;
