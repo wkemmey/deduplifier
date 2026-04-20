@@ -21898,3 +21898,93 @@ In this specific case, the critical one is #1 — we need *all* directories in t
 
 ---
 
+_**User (2026-04-20 17:51Z)**_
+
+scan.rs still has a lot of sql code in it.  is there a reason not to refactor that into db.rs?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="search" data-tool-name="copilot_findTextInFiles">
+<details>
+<summary>Tool use: **copilot_findTextInFiles** • Searching for regex `SELECT|INSERT|UPDATE|DELETE|visited_files` (`**/src/scan.rs`)</summary>
+
+
+Searched for regex `SELECT|INSERT|UPDATE|DELETE|visited_files` (`**/src/scan.rs`), 20 results
+
+</details>
+</tool-use>
+
+---
+
+Let me look at the current state of scan.rs to see what SQL remains.The SQL remaining in `scan.rs` is entirely in the **tests** — `UPDATE files SET hash = ...`, `SELECT hash FROM files WHERE path = ?1`, `SELECT COUNT(*) FROM visited_files`. The production code has no inline SQL left at all.
+
+That SQL in the tests is fine where it is. Tests are allowed to reach directly into the DB to set up state or verify results — that's their job. Adding `db::` wrapper functions just to serve test setup would add API surface to production code that exists only to satisfy tests, which is the wrong trade-off.
+
+So `scan.rs` is actually fully refactored already on the production side.
+
+---
+
+_**User (2026-04-20 17:55Z)**_
+
+you're right, we don't want to move that, i didn't notice it was all in tests.  however the sql in the tests is somewhat repetitive.  can we factor out the sql calls into a few helper functions, just to clean up the tests?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    fn open_test_db() -&gt; Connection {\n        let conn = Connection::open_in_memory().unwrap();\n        setup_schema(&amp;conn).unwrap();\n        conn\n    }\n\n    fn get_file_hash(conn: &amp;Connection, path: &amp;std::path::Path) -&gt; String {\n        conn.query_row(\n            \"SELECT hash FROM files WHERE path = ?1\",\n            rusqlite::params![path.to_str().unwrap()],\n            |r| r.get(0),\n        )\n        .unwrap()\n    }\n\n    fn get_dir_hash(conn: &amp;Connection, path: &amp;std::path::Path) -&gt; String {\n        conn.query_row(\n            \"SELECT hash FROM directories WHERE path = ?1\",\n            rusqlite::params![path.to_str().unwrap()],\n            |r| r.get(0),\n        )\n        .unwrap()\n    }\n\n    fn insert_ghost_file(conn: &amp;Connection, path: &amp;std::path::Path) {\n        conn.execute(\n            \"INSERT INTO files (path, hash, size, modified) VALUES (?1, 'ghost', 0, 0)\",\n            rusqlite::params![path.to_str().unwrap()],\n        )\n        .unwrap();\n    }\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    fn open_test_db() -&gt; Connection {\n        let conn = Connection::open_in_memory().unwrap();\n        setup_schema(&amp;conn).unwrap();\n        conn\n    }\n\n    fn get_file_hash(conn: &amp;Connection, path: &amp;std::path::Path) -&gt; String {\n        conn.query_row(\n            \"SELECT hash FROM files WHERE path = ?1\",\n            rusqlite::params![path.to_str().unwrap()],\n            |r| r.get(0),\n        )\n        .unwrap()\n    }\n\n    fn get_dir_hash(conn: &amp;Connection, path: &amp;std::path::Path) -&gt; String {\n        conn.query_row(\n            \"SELECT hash FROM directories WHERE path = ?1\",\n            rusqlite::params![path.to_str().unwrap()],\n            |r| r.get(0),\n        )\n        .unwrap()\n    }\n\n    fn insert_ghost_file(conn: &amp;Connection, path: &amp;std::path::Path) {\n        conn.execute(\n            \"INSERT INTO files (path, hash, size, modified) VALUES (?1, 'ghost', 0, 0)\",\n            rusqlite::params![path.to_str().unwrap()],\n        )\n        .unwrap();\n    }",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Looking at the test SQL, I see these patterns repeated:
+1. `conn.query_row("SELECT COUNT(*) FROM visited_files", [], |r| r.get(0))` — once
+2. `conn.execute("UPDATE files SET hash = '...' WHERE path = ?1", params![...])` — twice (different values)
+3. `conn.query_row("SELECT hash FROM files WHERE path = ?1", params![...], |r| r.get(0))` — twice
+
+
+4. An insert operation adding file records with path, hash, size, and modified timestamp — once
+5. A count query checking files by path — once
+6. A hash lookup from the directories table — four times
+
+I'm noticing I could extract helper functions to reduce this duplication, like a function to get the visited count and another to update file hashes.
+
+The most frequently called operations are retrieving stored hashes from files (twice) and directory hashes (four times), so those would benefit most from being wrapped into dedicated helper functions.Looking at the test SQL, the repeated patterns are:
+- `SELECT hash FROM files WHERE path = ?1` — 2x
+- `SELECT hash FROM directories WHERE path = ?1` — 4x
+- `UPDATE files SET hash/modified WHERE path = ?1` — 2x (different values each time, so maybe not worth extracting)
+
+The two `SELECT hash` queries are the main wins. Let me extract those plus the ghost-file insert which appears once but is noisy inline: 
+
+---
+

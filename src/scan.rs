@@ -193,6 +193,32 @@ mod tests {
         conn
     }
 
+    fn get_file_hash(conn: &Connection, path: &std::path::Path) -> String {
+        conn.query_row(
+            "SELECT hash FROM files WHERE path = ?1",
+            rusqlite::params![path.to_str().unwrap()],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    fn get_dir_hash(conn: &Connection, path: &std::path::Path) -> String {
+        conn.query_row(
+            "SELECT hash FROM directories WHERE path = ?1",
+            rusqlite::params![path.to_str().unwrap()],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    fn insert_ghost_file(conn: &Connection, path: &std::path::Path) {
+        conn.execute(
+            "INSERT INTO files (path, hash, size, modified) VALUES (?1, 'ghost', 0, 0)",
+            rusqlite::params![path.to_str().unwrap()],
+        )
+        .unwrap();
+    }
+
     // -----------------------------------------------------------------------
     // scan_files
     // -----------------------------------------------------------------------
@@ -263,17 +289,8 @@ mod tests {
         let mut files_by_dir2 = HashMap::new();
         scan_files(&conn, dir.path(), 1, &mut files_by_dir2).unwrap();
 
-        let stored_hash: String = conn
-            .query_row(
-                "SELECT hash FROM files WHERE path = ?1",
-                rusqlite::params![file.to_str().unwrap()],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(
-            stored_hash, "cached_sentinel",
-            "cache should prevent re-hashing"
-        );
+        let stored_hash = get_file_hash(&conn, &file);
+        assert_eq!(stored_hash, "cached_sentinel", "cache should prevent re-hashing");
 
         // files_by_dir should also reflect the cached hash, not the real one
         let files = files_by_dir2.get(dir.path()).unwrap();
@@ -306,17 +323,8 @@ mod tests {
         let mut files_by_dir2 = HashMap::new();
         scan_files(&conn, dir.path(), 1, &mut files_by_dir2).unwrap();
 
-        let stored_hash: String = conn
-            .query_row(
-                "SELECT hash FROM files WHERE path = ?1",
-                rusqlite::params![file.to_str().unwrap()],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_ne!(
-            stored_hash, "stale_hash",
-            "stale record should have been rehashed"
-        );
+        let stored_hash = get_file_hash(&conn, &file);
+        assert_ne!(stored_hash, "stale_hash", "stale record should have been rehashed");
     }
 
     // -----------------------------------------------------------------------
@@ -359,12 +367,7 @@ mod tests {
             let mut fbd = HashMap::new();
             scan_files(&conn, root.path(), 1, &mut fbd).unwrap();
             compute_directory_hashes(&conn, root.path(), &fbd).unwrap();
-            conn.query_row(
-                "SELECT hash FROM directories WHERE path = ?1",
-                rusqlite::params![root.path().to_str().unwrap()],
-                |r| r.get(0),
-            )
-            .unwrap()
+            get_dir_hash(&conn, root.path())
         };
 
         let hash_a = get_root_hash("content A");
@@ -410,20 +413,8 @@ mod tests {
         let conn = open_test_db();
         scan_directory(&conn, root.path(), 2, false).unwrap();
 
-        let hash_a: String = conn
-            .query_row(
-                "SELECT hash FROM directories WHERE path = ?1",
-                rusqlite::params![dir_a.to_str().unwrap()],
-                |r| r.get(0),
-            )
-            .unwrap();
-        let hash_b: String = conn
-            .query_row(
-                "SELECT hash FROM directories WHERE path = ?1",
-                rusqlite::params![dir_b.to_str().unwrap()],
-                |r| r.get(0),
-            )
-            .unwrap();
+        let hash_a = get_dir_hash(&conn, &dir_a);
+        let hash_b = get_dir_hash(&conn, &dir_b);
         assert_eq!(hash_a, hash_b);
     }
 
@@ -440,20 +431,8 @@ mod tests {
         let conn = open_test_db();
         scan_directory(&conn, root.path(), 2, false).unwrap();
 
-        let hash_a: String = conn
-            .query_row(
-                "SELECT hash FROM directories WHERE path = ?1",
-                rusqlite::params![dir_a.to_str().unwrap()],
-                |r| r.get(0),
-            )
-            .unwrap();
-        let hash_b: String = conn
-            .query_row(
-                "SELECT hash FROM directories WHERE path = ?1",
-                rusqlite::params![dir_b.to_str().unwrap()],
-                |r| r.get(0),
-            )
-            .unwrap();
+        let hash_a = get_dir_hash(&conn, &dir_a);
+        let hash_b = get_dir_hash(&conn, &dir_b);
         assert_ne!(hash_a, hash_b);
     }
 
@@ -467,11 +446,7 @@ mod tests {
 
         // Insert a ghost record for a file that doesn't exist on disk
         let ghost = dir.path().join("ghost.txt");
-        conn.execute(
-            "INSERT INTO files (path, hash, size, modified) VALUES (?1, 'abc', 10, 0)",
-            rusqlite::params![ghost.to_str().unwrap()],
-        )
-        .unwrap();
+        insert_ghost_file(&conn, &ghost);
 
         // Rescan with prompt_stale=false — ghost record should survive
         scan_directory(&conn, dir.path(), 1, false).unwrap();
