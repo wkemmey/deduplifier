@@ -1,53 +1,126 @@
+use crate::db;
+use crate::file_system;
 use anyhow::Result;
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 use std::collections::HashSet;
-use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
+/// A single directory instance that is a member of a duplicate group.
+struct DirEntry {
+    path: String,
+    size: i64,
+}
+
+/// A set of directories that all share the same hash, along with aggregate metadata.
+struct DuplicateGroup {
+    hash: String,
+    max_size: i64,
+    members: Vec<DirEntry>,
+}
+
 pub fn find_duplicate_files(conn: &Connection) -> Result<()> {
-    let mut stmt = conn.prepare(
-        "SELECT hash, COUNT(*) as count, SUM(size) as total_size 
-         FROM files 
-         GROUP BY hash 
-         HAVING count > 1
-         ORDER BY total_size DESC",
-    )?;
+    let groups = db::duplicate_file_groups(conn)?;
 
-    let duplicates = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, i64>(1)?,
-            row.get::<_, i64>(2)?,
-        ))
-    })?;
+    if groups.is_empty() {
+        println!("No duplicate files found.");
+        return Ok(());
+    }
 
-    let mut found_any = false;
-    for dup in duplicates {
-        let (hash, count, total_size) = dup?;
-        found_any = true;
-        let hash_display = if hash.len() >= 16 { &hash[..16] } else { &hash };
+    for group in groups {
+        let hash_display = if group.hash.len() >= 16 {
+            &group.hash[..16]
+        } else {
+            &group.hash
+        };
         println!(
             "\nDuplicate files (hash: {}, count: {}, total size: {} bytes):",
-            hash_display, count, total_size
+            hash_display, group.count, group.size
         );
 
-        let mut file_stmt = conn.prepare("SELECT path, size FROM files WHERE hash = ?1")?;
-        let files = file_stmt.query_map(params![hash], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })?;
-
-        for file in files {
-            let (path, size) = file?;
-            println!("  - {} ({} bytes)", path, size);
+        for record in db::files_with_hash(conn, &group.hash)? {
+            println!("  - {} ({} bytes)", record.path, record.size);
         }
     }
 
-    if !found_any {
-        println!("No duplicate files found.");
+    Ok(())
+}
+
+/// From a list of duplicate directory groups, fetch paths for each group,
+/// filter to only members under `scanned_dirs` (if any), drop groups with
+/// fewer than 2 remaining members, and then partition into top-level groups
+/// (those not entirely contained within another duplicate group) vs. covered
+/// sub-groups (which will be skipped to avoid double-deletion).
+/// Returns `(top_level, covered_count)`.
+fn build_top_level_groups(
+    conn: &Connection,
+    duplicate_group_hashes: &[db::DuplicateGroupHash],
+    scanned_dirs: &[&Path],
+) -> Result<(Vec<DuplicateGroup>, usize)> {
+    let mut groups: Vec<DuplicateGroup> = Vec::new();
+
+    for group in duplicate_group_hashes {
+        // find dirs with matching hash
+        let all_dirs_with_hash: Vec<DirEntry> = db::directories_with_hash(conn, &group.hash)?
+            .into_iter()
+            .map(|r| DirEntry {
+                path: r.path,
+                size: r.size,
+            })
+            .collect();
+
+        // filter to only those under scanned_dirs
+        let members: Vec<DirEntry> = all_dirs_with_hash
+            .into_iter()
+            .filter(|e| {
+                let candidate = Path::new(&e.path);
+                scanned_dirs.iter().any(|root| candidate.starts_with(root))
+            })
+            .collect();
+
+        // drop groups with fewer than 2 members after filtering
+        // (not duplicate if only 1 in scanned scope)
+        if members.len() >= 2 {
+            groups.push(DuplicateGroup {
+                hash: group.hash.clone(),
+                max_size: group.size,
+                members,
+            });
+        }
     }
 
-    Ok(())
+    // Build a flat set of all paths that appear in any duplicate group
+    let all_dup_paths: HashSet<&str> = groups
+        .iter()
+        .flat_map(|g| g.members.iter().map(|e| e.path.as_str()))
+        .collect();
+
+    // A group is "covered" if every member is a strict subdirectory of some
+    // other path in all_dup_paths — meaning a parent duplicate already subsumes it.
+    let is_covered = |members: &[DirEntry]| -> bool {
+        members.iter().all(|e| {
+            let candidate = Path::new(&e.path);
+            all_dup_paths.iter().any(|other| {
+                let other_path = Path::new(other);
+                other_path != candidate && candidate.starts_with(other_path)
+            })
+        })
+    };
+
+    // Collect covered hashes before dropping the closure that borrows all_dup_paths
+    let covered_hashes: HashSet<String> = groups
+        .iter()
+        .filter(|g| is_covered(&g.members))
+        .map(|g| g.hash.clone())
+        .collect();
+    let covered_count = covered_hashes.len();
+
+    let top_level: Vec<DuplicateGroup> = groups
+        .into_iter()
+        .filter(|g| !covered_hashes.contains(&g.hash))
+        .collect();
+
+    Ok((top_level, covered_count))
 }
 
 pub fn find_duplicate_directories(
@@ -58,112 +131,51 @@ pub fn find_duplicate_directories(
     scanned_dirs: &[&Path],
 ) -> Result<()> {
     // Collect all duplicate groups upfront so we can iterate interactively
-    let mut stmt = conn.prepare(
-        "SELECT hash, COUNT(*) as count, MAX(size) as max_size
-         FROM directories
-         WHERE hash != 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-         GROUP BY hash
-         HAVING count > 1
-         ORDER BY max_size DESC",
-    )?;
+    let duplicate_group_hashes = db::duplicate_directory_groups(conn)?;
 
-    let duplicate_groups: Vec<(String, i64, i64)> = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, i64>(1)?,
-                row.get::<_, i64>(2)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<_>>()?;
-
-    if duplicate_groups.is_empty() {
+    if duplicate_group_hashes.is_empty() {
         println!("No duplicate directories found.");
         return Ok(());
     }
 
-    // For each group, fetch its member paths upfront, then filter to only
-    // members that fall under one of the scanned directories.
-    // Groups with fewer than 2 members after filtering are skipped entirely —
-    // the out-of-scope members stay in the DB untouched for a future run.
-    let mut groups_with_paths: Vec<(String, i64, i64, Vec<(String, i64)>)> = Vec::new();
-    for (hash, count, max_size) in &duplicate_groups {
-        let mut dir_stmt =
-            conn.prepare("SELECT path, size FROM directories WHERE hash = ?1 ORDER BY path")?;
-        let all_dirs: Vec<(String, i64)> = dir_stmt
-            .query_map(params![hash], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })?
-            .collect::<rusqlite::Result<_>>()?;
-
-        // Keep only members that are under one of the scanned directories
-        let dirs: Vec<(String, i64)> = if scanned_dirs.is_empty() {
-            all_dirs
-        } else {
-            all_dirs
-                .into_iter()
-                .filter(|(p, _)| {
-                    let candidate = Path::new(p);
-                    scanned_dirs.iter().any(|root| candidate.starts_with(root))
-                })
-                .collect()
-        };
-
-        if dirs.len() >= 2 {
-            groups_with_paths.push((hash.clone(), *count, *max_size, dirs));
-        }
-    }
-
-    // Build a flat set of all paths that appear in any duplicate group
-    let all_dup_paths: HashSet<&str> = groups_with_paths
-        .iter()
-        .flat_map(|(_, _, _, dirs)| dirs.iter().map(|(p, _)| p.as_str()))
-        .collect();
-
-    // A group is "covered" if every one of its members is a strict subdirectory
-    // of some other path in all_dup_paths (i.e. not the path itself)
-    let is_covered = |dirs: &[(String, i64)]| -> bool {
-        dirs.iter().all(|(p, _)| {
-            let candidate = Path::new(p);
-            all_dup_paths.iter().any(|other| {
-                let other_path = Path::new(other);
-                other_path != candidate && candidate.starts_with(other_path)
-            })
-        })
-    };
-
-    let top_level_groups: Vec<&(String, i64, i64, Vec<(String, i64)>)> = groups_with_paths
-        .iter()
-        .filter(|(_, _, _, dirs)| !is_covered(dirs))
-        .collect();
+    let (top_level_groups, covered_count) =
+        build_top_level_groups(conn, &duplicate_group_hashes, scanned_dirs)?;
 
     println!(
         "Found {} set(s) of duplicate directories ({} are subdirectories of other duplicates and will be skipped).",
         top_level_groups.len(),
-        groups_with_paths.len() - top_level_groups.len(),
+        covered_count,
     );
 
     let stdin = io::stdin();
 
-    for (hash, count, max_size, dirs) in &top_level_groups {
-        let hash_display = if hash.len() >= 16 { &hash[..16] } else { hash };
+    for group in &top_level_groups {
+        let hash_display = if group.hash.len() >= 16 {
+            &group.hash[..16]
+        } else {
+            &group.hash
+        };
         println!(
             "\nDuplicate directories (hash: {}…, count: {}, size: {} bytes each):",
-            hash_display, count, max_size
+            hash_display,
+            group.members.len(),
+            group.max_size
         );
 
-        for (i, (path, size)) in dirs.iter().enumerate() {
-            println!("  [{}] {} ({} bytes)", i + 1, path, size);
+        for (i, entry) in group.members.iter().enumerate() {
+            println!("  [{}] {} ({} bytes)", i + 1, entry.path, entry.size);
         }
 
         if !delete {
             continue;
         }
 
+        let dirs = &group.members;
+
         // Determine if --canon auto-selects a keeper
         let auto_keep: Option<usize> = if let Some(canon_path) = canon {
             dirs.iter()
-                .position(|(p, _)| Path::new(p).starts_with(canon_path))
+                .position(|e| Path::new(&e.path).starts_with(canon_path))
         } else {
             None
         };
@@ -175,7 +187,7 @@ pub fn find_duplicate_directories(
             if let Some(canon_path) = canon {
                 let canon_count = dirs
                     .iter()
-                    .filter(|(p, _)| Path::new(p).starts_with(canon_path))
+                    .filter(|e| Path::new(&e.path).starts_with(canon_path))
                     .count();
                 if canon_count > 1 {
                     println!(
@@ -193,7 +205,7 @@ pub fn find_duplicate_directories(
             println!(
                 "  Auto-selecting [{}] as canonical: {}",
                 idx + 1,
-                dirs[idx].0
+                dirs[idx].path
             );
             idx
         } else {
@@ -220,10 +232,10 @@ pub fn find_duplicate_directories(
             .iter()
             .enumerate()
             .filter(|(i, _)| *i != keep_idx)
-            .map(|(_, (p, _))| p.as_str())
+            .map(|(_, e)| e.path.as_str())
             .collect();
 
-        println!("  Keeping:  {}", dirs[keep_idx].0);
+        println!("  Keeping:  {}", dirs[keep_idx].path);
         println!("  Will permanently delete:");
         for path in &to_delete {
             println!("    - {}", path);
@@ -254,19 +266,14 @@ pub fn find_duplicate_directories(
             // Delete the directory from disk
             let dir_path = Path::new(path);
             if dir_path.exists() {
-                fs::remove_dir_all(dir_path)?;
+                file_system::delete_dir_all(dir_path)?;
                 println!("  Deleted '{}'.", path);
             } else {
                 println!("  '{}' no longer exists on disk, skipping.", path);
             }
 
             // Remove from database: the directory itself and all files/subdirs under it
-            let prefix = format!("{}%", path);
-            conn.execute("DELETE FROM files WHERE path LIKE ?1", params![prefix])?;
-            conn.execute(
-                "DELETE FROM directories WHERE path LIKE ?1",
-                params![prefix],
-            )?;
+            db::remove_tree(conn, dir_path)?;
             println!("  Removed '{}' and its contents from the database.", path);
         }
 
@@ -287,53 +294,165 @@ pub fn find_duplicate_directories(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::setup_schema;
+    use crate::db;
     use rusqlite::Connection;
 
     fn open_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        setup_schema(&conn).unwrap();
+        db::setup_schema(&conn).unwrap();
         conn
     }
 
+    fn insert_file(conn: &Connection, path: &str, hash: &str, size: i64) {
+        db::upsert_file(conn, Path::new(path), hash, size, 0).unwrap();
+    }
+
+    fn insert_dir(conn: &Connection, path: &str, hash: &str, size: i64) {
+        db::upsert_directory(conn, Path::new(path), hash, size).unwrap();
+    }
+
+    // -----------------------------------------------------------------------
+    // find_duplicate_files — tested via db::duplicate_file_groups so we verify
+    // the query logic, not just that the function doesn't panic
+    // -----------------------------------------------------------------------
+
     #[test]
-    fn test_find_duplicate_files_none() {
-        // No files in DB — should complete without error
+    fn test_find_duplicate_files_none_when_db_empty() {
         let conn = open_test_db();
+        let groups = db::duplicate_file_groups(&conn).unwrap();
+        assert!(groups.is_empty());
         find_duplicate_files(&conn).unwrap();
     }
 
     #[test]
-    fn test_find_duplicate_files_detects_duplicates() {
+    fn test_find_duplicate_files_detects_correct_groups() {
         let conn = open_test_db();
-        // Insert two files with the same hash
-        conn.execute_batch(
-            "INSERT INTO files VALUES ('/a/file.txt', 'abc123', 100, 0);
-             INSERT INTO files VALUES ('/b/file.txt', 'abc123', 100, 0);",
-        )
-        .unwrap();
-        // Should complete without error (we can't easily capture stdout in unit tests,
-        // but we verify it doesn't panic or error)
+        insert_file(&conn, "/a/file.txt", "hash_dup", 100);
+        insert_file(&conn, "/b/file.txt", "hash_dup", 100);
+        insert_file(&conn, "/c/unique.txt", "hash_unique", 50);
+
+        let groups = db::duplicate_file_groups(&conn).unwrap();
+        assert_eq!(groups.len(), 1, "only one duplicate group");
+        assert_eq!(groups[0].hash, "hash_dup");
+        assert_eq!(groups[0].count, 2); // count
+        assert_eq!(groups[0].size, 200); // total_size
+
         find_duplicate_files(&conn).unwrap();
     }
 
     #[test]
-    fn test_find_duplicate_dirs_none() {
+    fn test_find_duplicate_files_unique_files_not_reported() {
         let conn = open_test_db();
-        find_duplicate_directories(&conn, false, None, false, &[]).unwrap();
+        insert_file(&conn, "/a/file.txt", "hash_a", 100);
+        insert_file(&conn, "/b/file.txt", "hash_b", 100);
+
+        let groups = db::duplicate_file_groups(&conn).unwrap();
+        assert!(
+            groups.is_empty(),
+            "different hashes should not appear as duplicates"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // build_top_level_groups — tests the filtering and covered-group logic
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_build_top_level_groups_basic() {
+        let conn = open_test_db();
+        insert_dir(&conn, "/a/photos", "hash1", 1024);
+        insert_dir(&conn, "/b/photos", "hash1", 1024);
+
+        let groups = db::duplicate_directory_groups(&conn).unwrap();
+        let (top_level, covered_count) =
+            build_top_level_groups(&conn, &groups, &[Path::new("/a"), Path::new("/b")]).unwrap();
+
+        assert_eq!(top_level.len(), 1);
+        assert_eq!(covered_count, 0);
+        assert_eq!(top_level[0].members.len(), 2);
     }
 
     #[test]
-    fn test_find_duplicate_dirs_detects_duplicates() {
+    fn test_build_top_level_groups_covered_subdirs_excluded() {
+        // /a and /b are duplicate parents; /a/sub and /b/sub are duplicate children.
+        // The child group should be "covered" and excluded from top_level.
         let conn = open_test_db();
-        // Insert two directories with the same non-empty hash
-        conn.execute_batch(
-            "INSERT INTO directories VALUES ('/a/photos', 'deadbeef01234567', 1024);
-             INSERT INTO directories VALUES ('/b/photos', 'deadbeef01234567', 1024);",
+        insert_dir(&conn, "/a", "parent_hash", 2048);
+        insert_dir(&conn, "/b", "parent_hash", 2048);
+        insert_dir(&conn, "/a/sub", "child_hash", 512);
+        insert_dir(&conn, "/b/sub", "child_hash", 512);
+
+        let groups = db::duplicate_directory_groups(&conn).unwrap();
+        let (top_level, covered_count) =
+            build_top_level_groups(&conn, &groups, &[Path::new("/a"), Path::new("/b")]).unwrap();
+
+        assert_eq!(top_level.len(), 1, "only parent group should be top-level");
+        assert_eq!(top_level[0].hash, "parent_hash");
+        assert_eq!(covered_count, 1, "child group should be covered");
+    }
+
+    #[test]
+    fn test_build_top_level_groups_scanned_dirs_filter() {
+        // Two duplicate dirs, but only one is under the scanned root.
+        // After filtering, the group has only 1 member and should be dropped.
+        let conn = open_test_db();
+        insert_dir(&conn, "/scanned/photos", "hash1", 1024);
+        insert_dir(&conn, "/other/photos", "hash1", 1024);
+
+        let groups = db::duplicate_directory_groups(&conn).unwrap();
+        let scanned = Path::new("/scanned");
+        let (top_level, _) = build_top_level_groups(&conn, &groups, &[scanned]).unwrap();
+
+        assert!(
+            top_level.is_empty(),
+            "group with only 1 member in scanned scope should be dropped"
+        );
+    }
+
+    #[test]
+    fn test_build_top_level_groups_scanned_dirs_keeps_both_in_scope() {
+        let conn = open_test_db();
+        insert_dir(&conn, "/scanned/a/photos", "hash1", 1024);
+        insert_dir(&conn, "/scanned/b/photos", "hash1", 1024);
+
+        let groups = db::duplicate_directory_groups(&conn).unwrap();
+        let scanned = Path::new("/scanned");
+        let (top_level, _) = build_top_level_groups(&conn, &groups, &[scanned]).unwrap();
+
+        assert_eq!(
+            top_level.len(),
+            1,
+            "both members in scope — group should appear"
+        );
+        assert_eq!(top_level[0].members.len(), 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // find_duplicate_directories — integration (delete=false, no prompt)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_find_duplicate_dirs_no_duplicates() {
+        let conn = open_test_db();
+        find_duplicate_directories(&conn, false, None, false, &[Path::new("/")]).unwrap();
+    }
+
+    #[test]
+    fn test_find_duplicate_dirs_with_duplicates_no_delete() {
+        let conn = open_test_db();
+        insert_dir(&conn, "/a/photos", "deadbeef", 1024);
+        insert_dir(&conn, "/b/photos", "deadbeef", 1024);
+        // delete=false — no prompt, just display
+        find_duplicate_directories(
+            &conn,
+            false,
+            None,
+            false,
+            &[Path::new("/a"), Path::new("/b")],
         )
         .unwrap();
-        // delete=false so no interactive prompt is triggered.
-        // Empty scanned_dirs means no filtering — both members are visible.
-        find_duplicate_directories(&conn, false, None, false, &[]).unwrap();
+        // Both dirs should still be in the DB
+        let dirs = db::directories_with_hash(&conn, "deadbeef").unwrap();
+        assert_eq!(dirs.len(), 2, "dirs should be untouched when delete=false");
     }
 }

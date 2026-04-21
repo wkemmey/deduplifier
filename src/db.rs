@@ -63,6 +63,15 @@ pub struct FileRecord {
     pub modified: i64,
 }
 
+/// A summary row from a duplicate-group query.
+/// `size` is `SUM(size)` for file groups and `MAX(size)` for directory groups.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DuplicateGroupHash {
+    pub hash: String,
+    pub count: i64,
+    pub size: i64,
+}
+
 /// Returns `true` if the file at `path` is not in the DB, or its stored
 /// modified timestamp differs from `modified`.
 pub fn should_update_file(conn: &Connection, path: &Path, modified: SystemTime) -> Result<bool> {
@@ -129,7 +138,7 @@ pub fn files_with_hash(conn: &Connection, hash: &str) -> Result<Vec<FileRecord>>
 
 /// Return groups of files that share the same hash (i.e. duplicates).
 /// Each item is `(hash, count, total_size_bytes)`, sorted by total_size descending.
-pub fn duplicate_file_groups(conn: &Connection) -> Result<Vec<(String, i64, i64)>> {
+pub fn duplicate_file_groups(conn: &Connection) -> Result<Vec<DuplicateGroupHash>> {
     let mut stmt = conn.prepare(
         "SELECT hash, COUNT(*) AS cnt, SUM(size) AS total_size
             FROM files
@@ -138,7 +147,13 @@ pub fn duplicate_file_groups(conn: &Connection) -> Result<Vec<(String, i64, i64)
             ORDER BY total_size DESC",
     )?;
     let rows = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .query_map([], |row| {
+            Ok(DuplicateGroupHash {
+                hash: row.get(0)?,
+                count: row.get(1)?,
+                size: row.get(2)?,
+            })
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
 }
@@ -304,7 +319,7 @@ pub fn directories_with_hash(conn: &Connection, hash: &str) -> Result<Vec<DirRec
 
 /// Return groups of directories that share the same non-empty hash (i.e. duplicates).
 /// Each item is `(hash, count, max_size_bytes)`, sorted by max_size descending.
-pub fn duplicate_directory_groups(conn: &Connection) -> Result<Vec<(String, i64, i64)>> {
+pub fn duplicate_directory_groups(conn: &Connection) -> Result<Vec<DuplicateGroupHash>> {
     let mut stmt = conn.prepare(
         "SELECT hash, COUNT(*) AS cnt, MAX(size) AS max_size
             FROM directories
@@ -315,7 +330,11 @@ pub fn duplicate_directory_groups(conn: &Connection) -> Result<Vec<(String, i64,
     )?;
     let rows = stmt
         .query_map(params![EMPTY_DIR_HASH], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            Ok(DuplicateGroupHash {
+                hash: row.get(0)?,
+                count: row.get(1)?,
+                size: row.get(2)?,
+            })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
@@ -509,10 +528,9 @@ mod tests {
         insert_file_raw(&conn, "/c.txt", "unique", 50, 3);
         let groups = duplicate_file_groups(&conn).unwrap();
         assert_eq!(groups.len(), 1);
-        let (hash, count, total) = &groups[0];
-        assert_eq!(hash, "same");
-        assert_eq!(*count, 2);
-        assert_eq!(*total, 200);
+        assert_eq!(groups[0].hash, "same");
+        assert_eq!(groups[0].count, 2);
+        assert_eq!(groups[0].size, 200);
     }
 
     #[test]
@@ -524,8 +542,8 @@ mod tests {
         insert_file_raw(&conn, "/d.txt", "big", 1000, 4);
         let groups = duplicate_file_groups(&conn).unwrap();
         assert_eq!(groups.len(), 2);
-        assert_eq!(groups[0].0, "big");
-        assert_eq!(groups[1].0, "small");
+        assert_eq!(groups[0].hash, "big");
+        assert_eq!(groups[1].hash, "small");
     }
 
     // -----------------------------------------------------------------------
@@ -744,10 +762,9 @@ mod tests {
         insert_dir_raw(&conn, "/c/unique", "uniquehash", 500);
         let groups = duplicate_directory_groups(&conn).unwrap();
         assert_eq!(groups.len(), 1);
-        let (hash, count, max_size) = &groups[0];
-        assert_eq!(hash, "samehash");
-        assert_eq!(*count, 2);
-        assert_eq!(*max_size, 1000);
+        assert_eq!(groups[0].hash, "samehash");
+        assert_eq!(groups[0].count, 2);
+        assert_eq!(groups[0].size, 1000);
     }
 
     #[test]
@@ -759,8 +776,8 @@ mod tests {
         insert_dir_raw(&conn, "/b/big", "big_hash", 9999);
         let groups = duplicate_directory_groups(&conn).unwrap();
         assert_eq!(groups.len(), 2);
-        assert_eq!(groups[0].0, "big_hash");
-        assert_eq!(groups[1].0, "small_hash");
+        assert_eq!(groups[0].hash, "big_hash");
+        assert_eq!(groups[1].hash, "small_hash");
     }
 
     // -----------------------------------------------------------------------

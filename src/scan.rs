@@ -290,7 +290,10 @@ mod tests {
         scan_files(&conn, dir.path(), 1, &mut files_by_dir2).unwrap();
 
         let stored_hash = get_file_hash(&conn, &file);
-        assert_eq!(stored_hash, "cached_sentinel", "cache should prevent re-hashing");
+        assert_eq!(
+            stored_hash, "cached_sentinel",
+            "cache should prevent re-hashing"
+        );
 
         // files_by_dir should also reflect the cached hash, not the real one
         let files = files_by_dir2.get(dir.path()).unwrap();
@@ -324,7 +327,10 @@ mod tests {
         scan_files(&conn, dir.path(), 1, &mut files_by_dir2).unwrap();
 
         let stored_hash = get_file_hash(&conn, &file);
-        assert_ne!(stored_hash, "stale_hash", "stale record should have been rehashed");
+        assert_ne!(
+            stored_hash, "stale_hash",
+            "stale record should have been rehashed"
+        );
     }
 
     // -----------------------------------------------------------------------
