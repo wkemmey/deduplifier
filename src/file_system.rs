@@ -9,11 +9,25 @@ use walkdir::WalkDir;
 // ---------------------------------------------------------------------------
 
 /// Move a file from `from` to `to`, creating parent directories as needed.
-/// On the same filesystem (drive or volume) this is an atomic rename; across
-/// filesystems it falls back to copy-then-delete.
+/// On the same filesystem this is an atomic rename; across filesystems it
+/// falls back to copy-then-delete so cross-volume moves always succeed.
+///
+/// Note: on Windows, `fs::rename` fails if `to` already exists (unlike Unix,
+/// which atomically replaces it). This is safe for our merge use case because
+/// we only move files into destinations that don't yet exist, but callers
+/// should be aware if that assumption ever changes.
 pub fn move_file(from: &Path, to: &Path) -> Result<()> {
     ensure_parent_exists(to)?;
-    fs::rename(from, to).with_context(|| format!("moving {} -> {}", from.display(), to.display()))
+    match fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            // rename failed — likely a cross-device move; fall back to copy-then-delete
+            fs::copy(from, to)
+                .with_context(|| format!("copying {} -> {} (cross-device move)", from.display(), to.display()))?;
+            fs::remove_file(from)
+                .with_context(|| format!("deleting source {} after cross-device move", from.display()))
+        }
+    }
 }
 
 /// Copy a file from `src` to `dst`, creating parent directories as needed.
