@@ -1,8 +1,10 @@
-use crate::utils;
-use anyhow::Result;
-use rusqlite::{params, Connection};
 use std::path::Path;
 use std::time::SystemTime;
+
+use anyhow::Result;
+use rusqlite::{params, Connection};
+
+use crate::utils;
 
 /// SHA-256 of an empty byte sequence — the hash assigned to empty directories.
 pub const EMPTY_DIR_HASH: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";

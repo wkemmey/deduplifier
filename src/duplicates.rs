@@ -1,10 +1,11 @@
-use crate::db;
-use crate::file_system;
-use anyhow::Result;
-use rusqlite::Connection;
 use std::collections::HashSet;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
+
+use anyhow::Result;
+use rusqlite::Connection;
+
+use crate::{db, file_system};
 
 /// A single directory instance that is a member of a duplicate group.
 struct DirEntry {

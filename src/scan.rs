@@ -1,14 +1,14 @@
-use crate::db;
-use crate::hashing;
-use crate::utils;
-use anyhow::Result;
-use rusqlite::Connection;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+
+use anyhow::Result;
+use rusqlite::Connection;
 use walkdir::WalkDir;
+
+use crate::{db, hashing, utils};
 
 #[derive(Debug, Clone)]
 pub struct FileEntry {

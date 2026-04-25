@@ -1,9 +1,10 @@
-use anyhow::Result;
-use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
+
+use anyhow::Result;
+use rusqlite::Connection;
 
 /// One side of a similar-directory pair, with its diff relative to the other side.
 #[derive(Debug)]

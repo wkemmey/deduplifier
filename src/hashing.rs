@@ -1,13 +1,13 @@
-use anyhow::Result;
-use rusqlite::Connection;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use anyhow::Result;
+use rusqlite::Connection;
+use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
-use crate::db;
-use crate::scan;
+use crate::{db, scan};
 
 pub fn count_files(root: &Path) -> Result<usize> {
     let mut count = 0;

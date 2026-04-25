@@ -6,11 +6,7 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use walkdir::WalkDir;
 
-use crate::db;
-use crate::file_system;
-use crate::hashing;
-use crate::similar;
-use crate::utils;
+use crate::{db, file_system, hashing, similar, utils};
 
 const SIMILARITY_WARN_THRESHOLD: f64 = 0.85;
 

@@ -1,7 +1,8 @@
-use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
+
+use anyhow::{Context, Result};
 
 /// Convert a Path to a &str, returning a clear error if the path contains invalid UTF-8.
 /// Files with invalid paths are skipped (not added to the DB) so the scan can continue.
