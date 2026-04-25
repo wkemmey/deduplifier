@@ -8,17 +8,10 @@ mod scan;
 mod similar;
 mod utils;
 
-use anyhow::Result;
-use clap::Parser;
 use std::path::{Path, PathBuf};
 
-use db::init_database;
-use duplicates::{find_duplicate_directories, find_duplicate_files};
-use hashing::count_files;
-use merge::merge_into_canon;
-use photos::sort_photos;
-use scan::scan_directory;
-use similar::find_similar_directories;
+use anyhow::Result;
+use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(name = "deduplifier")]
@@ -113,7 +106,7 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    let conn = init_database(&args.database)?;
+    let conn = db::init_database(&args.database)?;
     let mut total_invalid_paths = 0usize;
 
     let all_directories: Vec<&Path> = build_scan_list(&args.directories, args.canon.as_ref())
@@ -131,11 +124,11 @@ fn main() -> Result<()> {
         }
 
         println!("Counting files in directory: {:?}", directory);
-        let total_files = count_files(directory)?;
+        let total_files = hashing::count_files(directory)?;
         println!("Found {} files to process", total_files);
 
         println!("Scanning directory: {:?}", directory);
-        let invalid = scan_directory(&conn, directory, total_files, true)?;
+        let invalid = scan::scan_directory(&conn, directory, total_files, true)?;
         total_invalid_paths += invalid;
         println!(""); // New line after progress
     }
@@ -151,7 +144,7 @@ fn main() -> Result<()> {
 
     if args.dup_dirs {
         println!("\n=== Finding duplicate directories ===");
-        find_duplicate_directories(
+        duplicates::find_duplicate_directories(
             &conn,
             args.delete,
             args.canon.as_deref(),
@@ -160,14 +153,14 @@ fn main() -> Result<()> {
         )?
     } else if args.dup_files {
         println!("\n=== Finding duplicate files ===");
-        find_duplicate_files(&conn)?;
+        duplicates::find_duplicate_files(&conn)?
     } else if let Some(threshold_opt) = args.similarity {
         let threshold = threshold_opt.unwrap_or(0.85);
         println!(
             "\n=== Finding similar (near-duplicate) directories (threshold: {:.0}%) ===",
             threshold * 100.0
         );
-        find_similar_directories(&conn, threshold, &all_directories, true)?
+        similar::find_similar_directories(&conn, threshold, &all_directories, true)?
     } else if args.merge {
         if !args.delete {
             eprintln!(
@@ -189,7 +182,7 @@ fn main() -> Result<()> {
             .filter(|&p| p != canon)
             .collect();
         println!("\n=== Merging directories into canon ===");
-        merge_into_canon(&conn, canon, &sources, args.no_confirmation)?;
+        merge::merge_into_canon(&conn, canon, &sources, args.no_confirmation)?
     } else if args.sort_photos {
         if !args.delete || !args.no_confirmation {
             eprintln!(
@@ -206,7 +199,7 @@ fn main() -> Result<()> {
             }
         };
         println!("\n=== Sorting photos into date-based directories ===");
-        sort_photos(&conn, &all_directories, canon)?;
+        photos::sort_photos(&conn, &all_directories, canon)?
     }
 
     Ok(())
@@ -226,6 +219,13 @@ mod tests {
 
     fn p(s: &str) -> PathBuf {
         PathBuf::from(s)
+    }
+
+    #[test]
+    fn test_build_scan_list_empty_dirs_no_canon() {
+        let dirs: Vec<PathBuf> = vec![];
+        let list = build_scan_list(&dirs, None);
+        assert!(list.is_empty());
     }
 
     #[test]

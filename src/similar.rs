@@ -6,6 +6,8 @@ use std::path::Path;
 use anyhow::Result;
 use rusqlite::Connection;
 
+use crate::utils;
+
 /// One side of a similar-directory pair, with its diff relative to the other side.
 #[derive(Debug)]
 struct DirSide {
@@ -288,55 +290,6 @@ enum ConflictResolution {
     AskPerFile,
 }
 
-/// Format a Unix timestamp (seconds) as a human-readable date/time string.
-fn fmt_mtime(secs: i64) -> String {
-    // Use chrono if available; for now format with basic math to avoid new deps.
-    // secs since Unix epoch → approximate YYYY-MM-DD HH:MM
-    let secs = secs as u64;
-    // Days since epoch
-    let days = secs / 86400;
-    let rem = secs % 86400;
-    let hh = rem / 3600;
-    let mm = (rem % 3600) / 60;
-    // Gregorian calendar approximation
-    let mut y = 1970u64;
-    let mut d = days;
-    loop {
-        let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-        let days_in_year = if leap { 366 } else { 365 };
-        if d < days_in_year {
-            break;
-        }
-        d -= days_in_year;
-        y += 1;
-    }
-    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-    let month_days: [u64; 12] = [
-        31,
-        if leap { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
-    let mut month = 0usize;
-    let mut day = d;
-    for (i, &md) in month_days.iter().enumerate() {
-        if day < md {
-            month = i + 1;
-            break;
-        }
-        day -= md;
-    }
-    format!("{:04}-{:02}-{:02} {:02}:{:02}", y, month, day + 1, hh, mm)
-}
-
 /// Perform the merge: copy files that are only in one side to the other side,
 /// and for conflicts apply the given resolution strategy.
 /// Returns the number of files copied.
@@ -399,9 +352,9 @@ fn merge_into(
                             .and_then(|n| n.to_str())
                             .unwrap_or(rel.as_str());
                         let (date_old, date_new, side_old, side_new) = if mod_a <= mod_b {
-                            (fmt_mtime(*mod_a), fmt_mtime(*mod_b), "A", "B")
+                            (utils::fmt_mtime(*mod_a), utils::fmt_mtime(*mod_b), "A", "B")
                         } else {
-                            (fmt_mtime(*mod_b), fmt_mtime(*mod_a), "B", "A")
+                            (utils::fmt_mtime(*mod_b), utils::fmt_mtime(*mod_a), "B", "A")
                         };
                         println!(
                             "    {} (old [{}]: {}  new [{}]: {})",
@@ -671,9 +624,9 @@ pub fn find_similar_directories(
             );
             for (rel, _, _, mod_a, mod_b) in pair.conflicts.iter().take(5) {
                 let (newer, date) = if mod_a >= mod_b {
-                    ("A", fmt_mtime(*mod_a))
+                    ("A", utils::fmt_mtime(*mod_a))
                 } else {
-                    ("B", fmt_mtime(*mod_b))
+                    ("B", utils::fmt_mtime(*mod_b))
                 };
                 println!("    ~ {} (newer [{}]: {})", rel, newer, date);
             }
@@ -818,6 +771,79 @@ mod tests {
         assert_eq!(pairs[0].only_in_a.len(), 1, "Thumbs.db should be only-in-A");
         assert!(pairs[0].only_in_b.is_empty());
         assert!(pairs[0].conflicts.is_empty());
+    }
+
+    #[test]
+    fn test_build_dir_index_groups_by_parent() {
+        let conn = open_test_db();
+        conn.execute_batch(
+            "INSERT INTO directories VALUES ('/a/photos', 'dh1', 5000);
+             INSERT INTO files VALUES ('/a/photos/img1.jpg', 'fh1', 100, 1000);
+             INSERT INTO files VALUES ('/a/photos/img2.jpg', 'fh2', 200, 2000);",
+        )
+        .unwrap();
+        let index = build_dir_index(&conn, &[]).unwrap();
+        let dir = index.get("/a/photos").expect("dir should be indexed");
+        assert_eq!(dir.len(), 2);
+        let (abs, hash, mtime) = &dir["img1.jpg"];
+        assert_eq!(abs, "/a/photos/img1.jpg");
+        assert_eq!(hash, "fh1");
+        assert_eq!(*mtime, 1000);
+    }
+
+    #[test]
+    fn test_build_dir_index_filters_to_scanned_roots() {
+        let conn = open_test_db();
+        conn.execute_batch(
+            "INSERT INTO directories VALUES ('/a/photos', 'dh1', 5000);
+             INSERT INTO directories VALUES ('/b/photos', 'dh2', 5000);
+             INSERT INTO files VALUES ('/a/photos/img1.jpg', 'fh1', 100, 1000);
+             INSERT INTO files VALUES ('/b/photos/img1.jpg', 'fh2', 100, 1000);",
+        )
+        .unwrap();
+        let root = std::path::Path::new("/a");
+        let index = build_dir_index(&conn, &[root]).unwrap();
+        assert!(index.contains_key("/a/photos"), "/a/photos should be indexed");
+        assert!(!index.contains_key("/b/photos"), "/b/photos should be filtered out");
+    }
+
+    #[test]
+    fn test_files_for_dir_includes_subdirs_recursively() {
+        let conn = open_test_db();
+        conn.execute_batch(
+            "INSERT INTO directories VALUES ('/a', 'dh0', 5000);
+             INSERT INTO directories VALUES ('/a/sub', 'dh1', 5000);
+             INSERT INTO files VALUES ('/a/root.txt', 'fh0', 50, 1000);
+             INSERT INTO files VALUES ('/a/sub/child.txt', 'fh1', 50, 1000);",
+        )
+        .unwrap();
+        let index = build_dir_index(&conn, &[]).unwrap();
+        let files = files_for_dir(&index, "/a");
+        assert!(files.contains_key("root.txt"), "root-level file should be included");
+        assert!(files.contains_key("sub/child.txt"), "subdirectory file should be included with relative path");
+        assert_eq!(files.len(), 2);
+    }
+
+    #[test]
+    fn test_find_similar_detects_conflict() {
+        // 9 shared identical files + 1 file with same name but different hash → conflict.
+        // Score = 10/10 = 1.0 but there IS a conflict, so it should be reported.
+        let conn = open_test_db();
+        setup_two_photo_dirs(&conn, 9);
+        conn.execute_batch(
+            "INSERT INTO files VALUES ('/a/photos/conflict.jpg', 'hashA_conflict', 500, 1000);
+             INSERT INTO files VALUES ('/b/photos/conflict.jpg', 'hashB_conflict', 500, 2000);",
+        )
+        .unwrap();
+        let pairs = compute_similar_pairs(&conn, 0.85, &[]).unwrap();
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0].conflicts.len(), 1, "expected one conflict");
+        let (rel, hash_a, hash_b, mod_a, mod_b) = &pairs[0].conflicts[0];
+        assert_eq!(rel, "conflict.jpg");
+        assert_eq!(hash_a, "hashA_conflict");
+        assert_eq!(hash_b, "hashB_conflict");
+        assert_eq!(*mod_a, 1000);
+        assert_eq!(*mod_b, 2000);
     }
 
     #[test]
