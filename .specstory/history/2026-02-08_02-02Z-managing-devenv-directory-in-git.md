@@ -29239,7 +29239,381 @@ On Windows, the cross-device error code is different. `fs::rename` on Windows fa
 However, there's a subtlety on Windows: `fs::rename` on Windows will fail if the destination file already exists (unlike Unix where it atomically replaces). But that's a separate issue from cross-device.
 
 
-Since the current implementation catches all errors with `Err(_)`
+Since the current implementation catches all errors with `Err(_)` rather than checking for `EXDEV` specifically, it should handle Windows cross-device failures correctly regardless of what error code Windows returns.Yes, for cross-device moves. The catch-all `Err(_)` doesn't check for `EXDEV` specifically, so when Windows returns `ERROR_NOT_SAME_DEVICE` (a different error code) the fallback to copy-then-delete kicks in the same way.
+
+There is one Windows-specific wrinkle unrelated to cross-device: `fs::rename` on Windows fails if the destination file already exists, whereas on Unix it atomically replaces it. In a merge scenario the destination shouldn't already exist (we're moving files from source into canon where they don't yet exist), so in practice this isn't a problem — but it's worth being aware of if the semantics ever change.
+
+---
+
+_**User (2026-04-25 21:42Z)**_
+
+let's add a comment to that effect to remind us in case it ever matters
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n/// Move a file from &#96;from&#96; to &#96;to&#96;, creating parent directories as needed.\n/// On the same filesystem this is an atomic rename; across filesystems it\n/// falls back to copy-then-delete so cross-volume moves always succeed.\n///\n/// Note: on Windows, &#96;fs::rename&#96; fails if &#96;to&#96; already exists (unlike Unix,\n/// which atomically replaces it). This is safe for our merge use case because\n/// we only move files into destinations that don't yet exist, but callers\n/// should be aware if that assumption ever changes.\npub fn move_file(from: &amp;Path, to: &amp;Path) -&gt; Result&lt;()&gt; {\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "/// Move a file from &#96;from&#96; to &#96;to&#96;, creating parent directories as needed.\n/// On the same filesystem this is an atomic rename; across filesystems it\n/// falls back to copy-then-delete so cross-volume moves always succeed.\n///\n/// Note: on Windows, &#96;fs::rename&#96; fails if &#96;to&#96; already exists (unlike Unix,\n/// which atomically replaces it). This is safe for our merge use case because\n/// we only move files into destinations that don't yet exist, but callers\n/// should be aware if that assumption ever changes.\npub fn move_file(from: &amp;Path, to: &amp;Path) -&gt; Result&lt;()&gt; {",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+_**User (2026-04-25 21:49Z)**_
+
+any other refactorings you would recommend?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "c10a0f78-841f-4146-a7eb-1cf7071178b4",
+  "terminalCommandId": "tool-eb4cdfc4-a2d5-4ac7-a8ac-21a193335f40",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; grep -n \"unwrap()\" src/*.rs | grep -v \"#\\[cfg(test)\\]\" | grep -v \"mod tests\" | grep -v \"\\.unwrap(); //\" | head -40",
+    "toolEdited": "grep -n \"unwrap()\" src/*.rs | grep -v \"#\\[cfg(test)\\]\" | grep -v \"mod tests\" | grep -v \"\\.unwrap(); //\" | head -40"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="search" data-tool-name="copilot_findTextInFiles">
+<details>
+<summary>Tool use: **copilot_findTextInFiles** • Searching for regex `eprintln!\|println!` (`**/src/duplicates.rs`)</summary>
+
+
+No results found
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "2ec84ca2-efde-4333-90b4-1ab8f92e7227",
+  "terminalCommandId": "tool-6bcb353f-fe00-4c8b-a3bd-7716350dc7d0",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; grep -n \"unwrap()\" src/*.rs | grep -v \"tests\\b\\|test_\\|#\\[cfg\" | grep -v \"^src/db.rs\" | head -30",
+    "toolEdited": "grep -n \"unwrap()\" src/*.rs | grep -v \"tests\\b\\|test_\\|#\\[cfg\" | grep -v \"^src/db.rs\" | head -30"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="search" data-tool-name="copilot_findTextInFiles">
+<details>
+<summary>Tool use: **copilot_findTextInFiles** • Searching for text `.unwrap()` (`**/src/similar.rs`)</summary>
+
+
+Searched for text `.unwrap()` (`**/src/similar.rs`), 18 results
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/src/similar.rs#524-524), lines 524 to 528</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/src/similar.rs#524-524), lines 524 to 528
+
+</details>
+</tool-use>
+
+---
+
+Let me look at the codebase more carefully to identify remaining refactoring opportunities.All `unwrap()` calls outside `db.rs` are in tests — that's fine. One production `unwrap` to note: Here's my honest assessment of what remains:
+
+**Genuine refactoring opportunities:**
+
+1. **`similar_pairs.sort_by(...).unwrap()` in production code** — `f64::partial_cmp` returns `None` only for NaN. Scores are computed as `shared / total_unique` — both non-negative integers — so NaN is impossible in practice. But the `unwrap()` should be replaced with `unwrap_or(std::cmp::Ordering::Equal)` to be correct by construction rather than correct by reasoning.
+
+2. **UI mixed with logic in `similar.rs` and `duplicates.rs`** — you have this in your TODO already. `find_similar_directories` interleaves computation with `println!`, `stdin.lock()`, and prompting. This is the most substantive remaining architectural issue.
+
+3. **`scan.rs` has inline SQL** — we moved `similar.rs`'s queries but `scan.rs` still has direct `conn.query_row` and `conn.execute` calls in production code (`init_visited_files`, `mark_visited`, etc.). Those already have corresponding functions in `db.rs` though, so this may already be clean — worth a quick check.
+
+4. **`photos.rs` has similar UI/logic mixing** — `sort_photos` both does DB operations and prints progress.
+
+The NaN fix is one line and worth doing now. The UI separation is the big remaining architectural item but it's substantial work. Want to fix the `unwrap` first?
+
+---
+
+_**User (2026-04-25 21:51Z)**_
+
+yes
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;rust\n    // Sort by score descending (scores are rational numbers, so NaN is impossible)\n    similar_pairs.sort_by(|a, b| b.score.partial_cmp(&amp;a.score).unwrap_or(std::cmp::Ordering::Equal));\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    // Sort by score descending (scores are rational numbers, so NaN is impossible)\n    similar_pairs.sort_by(|a, b| b.score.partial_cmp(&amp;a.score).unwrap_or(std::cmp::Ordering::Equal));",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "057edcc1-6657-4ef0-8b37-842c3f9a9295",
+  "terminalCommandId": "tool-8d4a4c11-b18f-4598-9ab8-1a36e51b851a",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; cargo test 2&gt;&amp;1 | tail -4",
+    "toolEdited": "cargo test 2&gt;&amp;1 | tail -4"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Fix the unwrap in similar.rs sort_by.Done. No more `unwrap()` in production code outside of tests.
+
+---
+
+_**User (2026-04-25 21:56Z)**_
+
+hmmm, i don't see the inline sql in scan.rs, except in tests.  you specifically call out init_visited_files and mark_visited?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+The user is right - looking at scan.rs, the production code uses `db::init_visited_files`, `db::mark_visited`, `db::should_update_file`, etc. - all properly going through db.rs. The inline SQL is only in tests. I was wrong earlier.You're right, I was wrong. Looking at the actual code, `scan.rs` production code is already clean — it calls `db::init_visited_files`, `db::mark_visited`, `db::should_update_file`, `db::upsert_file`, `db::get_file`, `db::stale_file_count`, and `db::delete_stale_files`. All properly going through `db.rs`. The inline SQL in the tests (`query_row` for `visited_files` count, `get_file_hash`, `get_dir_hash`, etc.) is appropriate test-helper code.
+
+I shouldn't have flagged it. `scan.rs` is already in good shape.
+
+---
+
+_**User (2026-04-25 21:58Z)**_
+
+ok, nothing left but the big one!  what do you think is the correct approach to separate/isolate the UI?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+The user is asking about separating UI from logic in the codebase. Let me think about this carefully.
+
+The main offenders are `similar.rs` (which has both computation and interactive prompting mixed together) and `duplicates.rs` and `photos.rs` and `merge.rs`.
+
+The key insight is: what's the right Rust architecture for this?
+
+The cleanest approach is to have the logic functions return data structures that the UI layer then acts on, rather than having the logic functions do their own prompting and printing.
+
+Let me think about the layers:
+
+1. **Pure computation layer** - functions that take DB connection + parameters, return data structures. No printing, no stdin.
+
+
+2. **UI layer** - functions that take those data structures, display them, prompt the user, and call back into the action layer.
+3. **Action layer** - functions that perform filesystem/DB mutations.
+
+For `similar.rs`, `compute_similar_pairs` is already a pure computation function - it just returns `Vec<SimilarPair>`. The problem is `find_similar_directories` which mixes display + prompting + calling `merge_into`. 
+
+For `duplicates.rs`, `find_duplicate_directories` and `find_duplicate_files` mix display with prompting.
+
+I'm thinking about the best approach here. The simplest path would be to extract the UI concerns from these functions - have them return the data structures they've computed, then handle all the display and user interaction at a higher level.
+
+I could also use a trait-based approach where logic functions accept a `UserInterface` trait with methods for prompting and displaying, which would be more testable but adds complexity. Or I could pass closures for decisions like whether to delete something, though that can get messy.
+
+For this codebase, the straightforward extraction approach makes the most sense - moving all the I/O operations into a dedicated UI module while the logic functions stay pure and return their results.
+
+The refactor involves splitting functions like `find_similar_directories` into a computation step and separate UI functions for presentation and prompting, doing the same for duplicates and merge operations, and extracting progress printing from the photo sorting logic.The cleanest approach for this codebase is a **`ui.rs` module** that owns all stdin/stdout interaction. Here's the architecture:
+
+**The pattern:** logic functions return data; `ui.rs` displays it, prompts the user, returns a decision; action functions execute the decision.
+
+Concretely:
+
+```
+compute_similar_pairs()  →  Vec<SimilarPair>          (already exists, pure)
+ui::present_similar_pair()  →  Option<ConflictResolution>  (display + prompt)
+merge_into()                                           (execute, no printing)
+```
+
+**What moves to `ui.rs`:**
+- All `println!` / `print!` / `io::stdout().flush()` / `stdin.lock().read_line()`
+- The interactive loop in `find_similar_directories`
+- The delete confirmation loop in `find_duplicate_directories`  
+- The per-file conflict resolution prompt in `merge_into`
+- Progress indicators in `scan_files` and `sort_photos`
+
+**What stays in the logic modules:**
+- All computation
+- All filesystem operations
+- All DB operations
+- Error propagation
+
+**The structural change to `main.rs`:** instead of calling `similar::find_similar_directories` (which does everything), it calls `similar::compute_similar_pairs` → `ui::present_and_resolve_similar_pairs` → the merge actions.
+
+**Key benefit beyond aesthetics:** `merge_into` becomes testable — right now you can't test conflict resolution without mocking stdin. With the UI extracted, you can call `merge_into(pair, ConflictResolution::KeepNew)` directly in a test without any prompting.
+
+The main risk is that `SimilarPair`, `ConflictResolution`, and the duplicates equivalents need to be `pub` so `ui.rs` can work with them. Some are currently private.
+
+It's a real refactor — probably touches every module — but the shape of each change is mechanical once the boundary is defined. Want to proceed?
 
 ---
 

@@ -522,8 +522,8 @@ fn compute_similar_pairs(
     }
     println!(); // end progress line
 
-    // Sort by score descending
-    similar_pairs.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+    // Sort by score descending (scores are rational numbers, so NaN is impossible)
+    similar_pairs.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
     Ok(similar_pairs)
 }
