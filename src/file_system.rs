@@ -34,22 +34,6 @@ pub fn delete_file(path: &Path) -> Result<()> {
 // Directory operations
 // ---------------------------------------------------------------------------
 
-/// Create `path` and all missing parent directories.
-pub fn ensure_dir_exists(path: &Path) -> Result<()> {
-    fs::create_dir_all(path).with_context(|| format!("creating directory {}", path.display()))
-}
-
-/// Remove `path` only if it is empty.
-/// Returns `true` if the directory was removed, `false` if it was non-empty
-/// (so the caller can decide whether to warn). Any other error is propagated.
-pub fn delete_dir_if_empty(path: &Path) -> Result<bool> {
-    match fs::remove_dir(path) {
-        Ok(()) => Ok(true),
-        Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => Ok(false),
-        Err(e) => Err(e).with_context(|| format!("removing directory {}", path.display())),
-    }
-}
-
 /// Recursively delete `path` and everything inside it.
 pub fn delete_dir_all(path: &Path) -> Result<()> {
     fs::remove_dir_all(path).with_context(|| format!("removing directory tree {}", path.display()))
@@ -203,50 +187,6 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // ensure_dir_exists
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_ensure_dir_exists_creates_nested() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("a/b/c");
-
-        ensure_dir_exists(&path).unwrap();
-
-        assert!(path.is_dir());
-    }
-
-    #[test]
-    fn test_ensure_dir_exists_idempotent() {
-        let dir = tempdir().unwrap();
-        ensure_dir_exists(dir.path()).unwrap();
-        ensure_dir_exists(dir.path()).unwrap(); // second call should not error
-    }
-
-    // -----------------------------------------------------------------------
-    // delete_dir_if_empty
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_delete_dir_if_empty_removes_empty_dir() {
-        let dir = tempdir().unwrap();
-        let target = dir.path().join("empty");
-        fs::create_dir(&target).unwrap();
-
-        assert!(delete_dir_if_empty(&target).unwrap());
-        assert!(!target.exists());
-    }
-
-    #[test]
-    fn test_delete_dir_if_empty_returns_false_for_nonempty() {
-        let dir = tempdir().unwrap();
-        let target = dir.path().join("nonempty");
-        fs::create_dir(&target).unwrap();
-        fs::write(target.join("file.txt"), b"x").unwrap();
-
-        assert!(!delete_dir_if_empty(&target).unwrap());
-        assert!(target.exists(), "directory should still exist");
-    }
-
     // -----------------------------------------------------------------------
     // delete_dir_all
     // -----------------------------------------------------------------------

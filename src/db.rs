@@ -105,22 +105,6 @@ pub fn get_file(conn: &Connection, path: &Path) -> Result<Option<FileRecord>> {
     }
 }
 
-/// Return all file records, ordered by path.
-pub fn all_files(conn: &Connection) -> Result<Vec<FileRecord>> {
-    let mut stmt = conn.prepare("SELECT path, hash, size, modified FROM files ORDER BY path")?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(FileRecord {
-                path: row.get(0)?,
-                hash: row.get(1)?,
-                size: row.get(2)?,
-                modified: row.get(3)?,
-            })
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows)
-}
-
 /// Return all file records with the given hash, ordered by path.
 pub fn files_with_hash(conn: &Connection, hash: &str) -> Result<Vec<FileRecord>> {
     let mut stmt =
@@ -267,15 +251,6 @@ pub struct DirRecord {
     pub path: String,
     pub hash: String,
     pub size: i64,
-}
-
-/// Return all directory paths, ordered by path.
-pub fn all_directory_paths(conn: &Connection) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT path FROM directories ORDER BY path")?;
-    let rows = stmt
-        .query_map([], |row| row.get(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows)
 }
 
 /// Return the immediate child directories of `dir_path` stored in the DB.
@@ -460,27 +435,6 @@ mod tests {
         assert_eq!(rec.hash, "hash1");
         assert_eq!(rec.size, 42);
         assert_eq!(rec.modified, 999);
-    }
-
-    // -----------------------------------------------------------------------
-    // all_files
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_all_files_empty() {
-        let conn = open_test_db();
-        assert!(all_files(&conn).unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_all_files_returns_all_ordered() {
-        let conn = open_test_db();
-        insert_file_raw(&conn, "/b.txt", "h2", 20, 2);
-        insert_file_raw(&conn, "/a.txt", "h1", 10, 1);
-        let files = all_files(&conn).unwrap();
-        assert_eq!(files.len(), 2);
-        assert_eq!(files[0].path, "/a.txt");
-        assert_eq!(files[1].path, "/b.txt");
     }
 
     // -----------------------------------------------------------------------
@@ -670,24 +624,6 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // all_directory_paths
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_all_directory_paths_empty() {
-        let conn = open_test_db();
-        assert!(all_directory_paths(&conn).unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_all_directory_paths_ordered() {
-        let conn = open_test_db();
-        insert_dir_raw(&conn, "/b", "h2", 20);
-        insert_dir_raw(&conn, "/a", "h1", 10);
-        let paths = all_directory_paths(&conn).unwrap();
-        assert_eq!(paths, vec!["/a", "/b"]);
-    }
-
     // -----------------------------------------------------------------------
     // child_directories
     // -----------------------------------------------------------------------
@@ -819,18 +755,24 @@ mod tests {
         remove_tree(&conn, Path::new("/tree")).unwrap();
 
         // Everything under /tree is gone
-        assert!(all_files(&conn)
-            .unwrap()
-            .iter()
-            .all(|f| !f.path.starts_with("/tree")));
-        assert!(all_directory_paths(&conn)
-            .unwrap()
-            .iter()
-            .all(|p| !p.starts_with("/tree")));
+        let file_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files WHERE path LIKE '/tree%'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(file_count, 0);
+        let dir_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM directories WHERE path LIKE '/tree%'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(dir_count, 0);
 
         // /other is untouched
-        assert_eq!(all_files(&conn).unwrap().len(), 1);
-        assert_eq!(all_directory_paths(&conn).unwrap(), vec!["/other"]);
+        let other_files: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files WHERE path LIKE '/other%'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(other_files, 1);
+        let other_dirs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM directories WHERE path = '/other'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(other_dirs, 1);
     }
 
     #[test]

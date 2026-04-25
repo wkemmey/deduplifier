@@ -1,12 +1,11 @@
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::utils;
+use crate::{file_system, utils};
 
 /// One side of a similar-directory pair, with its diff relative to the other side.
 #[derive(Debug)]
@@ -303,10 +302,7 @@ fn merge_into(
     // Files only in A → copy into B
     for (rel, src_abs) in &pair.only_in_a {
         let dst_abs = format!("{}/{}", pair.b.path, rel);
-        if let Some(parent) = Path::new(&dst_abs).parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::copy(src_abs, &dst_abs)?;
+        file_system::copy_file(Path::new(src_abs), Path::new(&dst_abs))?;
         println!("    Copied only-in-A into B: {}", rel);
         copied += 1;
     }
@@ -314,10 +310,7 @@ fn merge_into(
     // Files only in B → copy into A
     for (rel, src_abs) in &pair.only_in_b {
         let dst_abs = format!("{}/{}", pair.a.path, rel);
-        if let Some(parent) = Path::new(&dst_abs).parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::copy(src_abs, &dst_abs)?;
+        file_system::copy_file(Path::new(src_abs), Path::new(&dst_abs))?;
         println!("    Copied only-in-B into A: {}", rel);
         copied += 1;
     }
@@ -386,10 +379,10 @@ fn merge_into(
 
         // Copy winning version to the losing side
         if keep_newer {
-            fs::copy(newer_path, older_path)?;
+            file_system::copy_file(Path::new(newer_path), Path::new(older_path))?;
             println!("    Kept newer: {}", rel);
         } else {
-            fs::copy(older_path, newer_path)?;
+            file_system::copy_file(Path::new(older_path), Path::new(newer_path))?;
             println!("    Kept older: {}", rel);
         }
         copied += 1;

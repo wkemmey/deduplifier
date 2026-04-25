@@ -72,3 +72,6 @@ consitent ordering of use commands--global to local
 
 
 One question before we proceed: should file_system::move_file be used for fs::rename? Rename is atomic on the same filesystem but fails across filesystems; file_system::move_file may handle the cross-filesystem case (copy + delete). In merge.rs this matters since canon and source could be on different volumes. What does file_system.rs currently expose?
+
+
+similar.rs currently has no DB awareness in its merge — it copies files but doesn't update the DB. This is noted in the printed message ("re-run without --similarity to detect exact duplicates"), so it's a known limitation, not a bug. But it's worth calling out as a gap.
