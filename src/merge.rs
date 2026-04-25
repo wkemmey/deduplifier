@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
@@ -7,8 +6,11 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use walkdir::WalkDir;
 
-use crate::similar::{build_dir_index, files_for_dir};
-use crate::utils::path_to_str;
+use crate::db;
+use crate::file_system;
+use crate::hashing;
+use crate::similar;
+use crate::utils;
 
 const SIMILARITY_WARN_THRESHOLD: f64 = 0.85;
 
@@ -58,14 +60,14 @@ fn merge_one(
     // Build an in-memory index of both trees for scoring.
     // We pass both roots so the index covers exactly what we need.
     let both: &[&Path] = &[canon, source];
-    let dir_index = build_dir_index(conn, both)?;
+    let dir_index = similar::build_dir_index(conn, both)?;
 
     let canon_str = canon.to_string_lossy().to_string();
     let source_str = source.to_string_lossy().to_string();
 
     // Compute similarity score (Jaccard on file hashes, full recursive tree)
-    let canon_files = files_for_dir(&dir_index, &canon_str);
-    let source_files = files_for_dir(&dir_index, &source_str);
+    let canon_files = similar::files_for_dir(&dir_index, &canon_str);
+    let source_files = similar::files_for_dir(&dir_index, &source_str);
 
     let canon_hashes: HashSet<&str> = canon_files.values().map(|(_, h, _)| h.as_str()).collect();
     let source_hashes: HashSet<&str> = source_files.values().map(|(_, h, _)| h.as_str()).collect();
@@ -134,23 +136,18 @@ fn merge_one(
 
             if src_hash == dest_hash {
                 // True duplicate — silently delete source
-                fs::remove_file(src_abs)
-                    .with_context(|| format!("removing duplicate {}", src_abs.display()))?;
-                db_remove_file(conn, src_abs);
+                file_system::delete_file(src_abs)?;
+                db::remove_file(conn, src_abs)?;
                 deleted_dups += 1;
                 continue;
             }
 
             // Different content — resolve conflict
             let keep_source = if no_confirmation {
-                // Keep newest
-                let src_mtime = mtime(src_abs);
-                let dest_mtime = mtime(&dest_abs);
-                src_mtime > dest_mtime
+                utils::mtime(src_abs)? > utils::mtime(&dest_abs)?
             } else {
-                // Prompt
-                let src_mtime = mtime(src_abs);
-                let dest_mtime = mtime(&dest_abs);
+                let src_mtime = utils::mtime(src_abs)?;
+                let dest_mtime = utils::mtime(&dest_abs)?;
                 let choice =
                     prompt_conflict(reader, rel, &dest_abs, dest_mtime, src_abs, src_mtime)?;
                 match choice {
@@ -165,36 +162,22 @@ fn merge_one(
 
             if keep_source {
                 // Overwrite canon with source, delete source original
-                fs::copy(src_abs, &dest_abs).with_context(|| {
-                    format!(
-                        "overwriting {} with {}",
-                        dest_abs.display(),
-                        src_abs.display()
-                    )
-                })?;
-                fs::remove_file(src_abs)
-                    .with_context(|| format!("removing {}", src_abs.display()))?;
-                db_remove_file(conn, src_abs);
-                db_update_file_hash(conn, &dest_abs, &src_hash);
+                file_system::copy_file(src_abs, &dest_abs)?;
+                file_system::delete_file(src_abs)?;
+                db::remove_file(conn, src_abs)?;
+                db::update_file_hash(conn, &dest_abs, &src_hash)?;
                 println!("  Conflict (kept source): {}", rel.display());
             } else {
                 // Keep canon, delete source
-                fs::remove_file(src_abs)
-                    .with_context(|| format!("removing {}", src_abs.display()))?;
-                db_remove_file(conn, src_abs);
+                file_system::delete_file(src_abs)?;
+                db::remove_file(conn, src_abs)?;
                 println!("  Conflict (kept canon): {}", rel.display());
             }
             moved += 1;
         } else {
             // No conflict — move file into canon
-            if let Some(parent) = dest_abs.parent() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("creating {}", parent.display()))?;
-            }
-            fs::rename(src_abs, &dest_abs).with_context(|| {
-                format!("moving {} -> {}", src_abs.display(), dest_abs.display())
-            })?;
-            db_move_file(conn, src_abs, &dest_abs);
+            file_system::move_file(src_abs, &dest_abs)?;
+            db::move_file(conn, src_abs, &dest_abs)?;
             println!("  Moved: {}", rel.display());
             moved += 1;
         }
@@ -205,8 +188,7 @@ fn merge_one(
         moved, deleted_dups, skipped
     );
 
-    // Delete now-empty source subdirectories (never the source root itself)
-    cleanup_empty_dirs(conn, source)?;
+    file_system::delete_empty_subdirs(source)?;
 
     Ok(())
 }
@@ -233,12 +215,12 @@ fn prompt_conflict(
     println!(
         "    [1] keep canon  {} ({})",
         canon_path.display(),
-        fmt_mtime(canon_mtime)
+        utils::fmt_mtime(canon_mtime)
     );
     println!(
         "    [2] keep source {} ({})",
         source_path.display(),
-        fmt_mtime(source_mtime)
+        utils::fmt_mtime(source_mtime)
     );
     loop {
         print!("    [1] keep canon  [2] keep source  [s] skip > ");
@@ -255,160 +237,12 @@ fn prompt_conflict(
 }
 
 // ---------------------------------------------------------------------------
-// Empty directory cleanup (source only)
-// ---------------------------------------------------------------------------
-
-fn cleanup_empty_dirs(conn: &Connection, source: &Path) -> Result<()> {
-    let mut dirs: Vec<PathBuf> = WalkDir::new(source)
-        .min_depth(1)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_dir())
-        .map(|e| e.into_path())
-        .collect();
-
-    // Deepest first
-    dirs.sort_by(|a, b| b.components().count().cmp(&a.components().count()));
-
-    for dir in &dirs {
-        let Ok(mut entries) = fs::read_dir(dir) else {
-            continue;
-        };
-        if entries.next().is_none() {
-            match fs::remove_dir(dir) {
-                Ok(()) => {
-                    println!("  Removed empty dir: {}", dir.display());
-                    db_remove_dir(conn, dir);
-                }
-                Err(e) => eprintln!("  Warning: could not remove {}: {}", dir.display(), e),
-            }
-        }
-    }
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 fn hash_file(path: &Path) -> Result<String> {
-    crate::hashing::compute_file_hash(path).with_context(|| format!("hashing {}", path.display()))
+    hashing::compute_file_hash(path).with_context(|| format!("hashing {}", path.display()))
 }
-
-fn mtime(path: &Path) -> i64 {
-    fs::metadata(path)
-        .and_then(|m| m.modified())
-        .map(|t| {
-            t.duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0)
-        })
-        .unwrap_or(0)
-}
-
-fn fmt_mtime(secs: i64) -> String {
-    // Reuse the same pure-Rust formatter from similar.rs logic
-    // (duplicated here to avoid pub-ing it; could be moved to a shared util)
-    let secs = secs.max(0) as u64;
-    let days = secs / 86400;
-    let rem = secs % 86400;
-    let hh = rem / 3600;
-    let mm = (rem % 3600) / 60;
-    let mut y = 1970u64;
-    let mut d = days;
-    loop {
-        let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-        let diy = if leap { 366 } else { 365 };
-        if d < diy {
-            break;
-        }
-        d -= diy;
-        y += 1;
-    }
-    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-    let month_days: [u64; 12] = [
-        31,
-        if leap { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
-    let mut month = 0usize;
-    let mut day = d;
-    for (i, &md) in month_days.iter().enumerate() {
-        if day < md {
-            month = i + 1;
-            break;
-        }
-        day -= md;
-    }
-    format!("{:04}-{:02}-{:02} {:02}:{:02}", y, month, day + 1, hh, mm)
-}
-
-// ---------------------------------------------------------------------------
-// Database helpers
-// ---------------------------------------------------------------------------
-
-fn db_move_file(conn: &Connection, old_path: &Path, new_path: &Path) {
-    match (path_to_str(old_path), path_to_str(new_path)) {
-        (Ok(old), Ok(new)) => {
-            if let Err(e) = conn.execute(
-                "UPDATE files SET path = ?1 WHERE path = ?2",
-                rusqlite::params![new, old],
-            ) {
-                eprintln!("Warning: DB update failed for {}: {}", old, e);
-            }
-        }
-        _ => eprintln!("Warning: non-UTF-8 path, skipping DB update"),
-    }
-}
-
-fn db_remove_file(conn: &Connection, path: &Path) {
-    if let Ok(p) = path_to_str(path) {
-        if let Err(e) = conn.execute("DELETE FROM files WHERE path = ?1", rusqlite::params![p]) {
-            eprintln!("Warning: DB delete failed for {}: {}", p, e);
-        }
-    }
-}
-
-fn db_update_file_hash(conn: &Connection, path: &Path, hash: &str) {
-    if let Ok(p) = path_to_str(path) {
-        if let Err(e) = conn.execute(
-            "UPDATE files SET hash = ?1 WHERE path = ?2",
-            rusqlite::params![hash, p],
-        ) {
-            eprintln!("Warning: DB hash update failed for {}: {}", p, e);
-        }
-    }
-}
-
-fn db_remove_dir(conn: &Connection, path: &Path) {
-    if let Ok(p) = path_to_str(path) {
-        if let Err(e) = conn.execute(
-            "DELETE FROM files WHERE path LIKE ?1 || '/%'",
-            rusqlite::params![p],
-        ) {
-            eprintln!("Warning: DB cleanup failed for dir {}: {}", p, e);
-        }
-        if let Err(e) = conn.execute(
-            "DELETE FROM directories WHERE path = ?1",
-            rusqlite::params![p],
-        ) {
-            eprintln!("Warning: DB cleanup failed for dir {}: {}", p, e);
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 // ------------------------------------------------------------------
 //
@@ -421,14 +255,14 @@ fn db_remove_dir(conn: &Connection, path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::setup_schema;
+    use crate::db;
     use rusqlite::Connection;
     use std::fs;
     use tempfile::tempdir;
 
     fn open_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        setup_schema(&conn).unwrap();
+        db::setup_schema(&conn).unwrap();
         conn
     }
 
@@ -439,17 +273,7 @@ mod tests {
         fs::write(path, content).unwrap();
     }
 
-    fn insert_file(conn: &Connection, path: &Path, hash: &str) {
-        let p = path.to_str().unwrap();
-        conn.execute(
-            "INSERT OR REPLACE INTO files (path, hash, size, modified) VALUES (?1, ?2, 0, 0)",
-            rusqlite::params![p, hash],
-        )
-        .unwrap();
-    }
-
-    /// Returns a BufRead that answers "y" to any prompt (for tests that
-    /// trigger the low-similarity warning) or provides no-op input.
+    /// Returns a BufRead that answers "y" to any prompt.
     fn yes_reader() -> io::Cursor<&'static [u8]> {
         io::Cursor::new(b"y\n")
     }
@@ -465,12 +289,17 @@ mod tests {
 
         let src_file = source.join("photo.jpg");
         write_file(&src_file, b"unique photo");
-        insert_file(&conn, &src_file, "hash_unique");
+        db::upsert_file(&conn, &src_file, "hash_unique", 12, 0).unwrap();
 
         merge_one(&conn, &canon, &source, true, &mut yes_reader()).unwrap();
 
         assert!(canon.join("photo.jpg").exists(), "file should be in canon");
         assert!(!src_file.exists(), "file should be gone from source");
+        // DB record should now point to canon
+        assert!(db::get_file(&conn, &canon.join("photo.jpg"))
+            .unwrap()
+            .is_some());
+        assert!(db::get_file(&conn, &src_file).unwrap().is_none());
     }
 
     #[test]
@@ -483,13 +312,16 @@ mod tests {
         let content = b"identical content";
         write_file(&canon.join("photo.jpg"), content);
         write_file(&source.join("photo.jpg"), content);
-        insert_file(&conn, &source.join("photo.jpg"), "hash_same");
+        db::upsert_file(&conn, &source.join("photo.jpg"), "hash_same", 17, 0).unwrap();
 
         merge_one(&conn, &canon, &source, true, &mut yes_reader()).unwrap();
 
-        // Source removed; canon untouched
         assert!(canon.join("photo.jpg").exists());
         assert!(!source.join("photo.jpg").exists());
+        // DB record for source should be gone
+        assert!(db::get_file(&conn, &source.join("photo.jpg"))
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -502,10 +334,8 @@ mod tests {
         write_file(&canon.join("photo.jpg"), b"canon version");
         let src = source.join("photo.jpg");
         write_file(&src, b"source version");
-        insert_file(&conn, &src, "hash_source");
+        db::upsert_file(&conn, &src, "hash_source", 14, 0).unwrap();
 
-        // no_confirmation=true so conflict is auto-resolved; just verify
-        // exactly one copy remains and the source file is gone.
         merge_one(&conn, &canon, &source, true, &mut yes_reader()).unwrap();
 
         assert!(canon.join("photo.jpg").exists());
@@ -522,7 +352,7 @@ mod tests {
 
         let src_file = source.join("2009").join("jan").join("img.jpg");
         write_file(&src_file, b"nested photo");
-        insert_file(&conn, &src_file, "hash_nested");
+        db::upsert_file(&conn, &src_file, "hash_nested", 12, 0).unwrap();
 
         merge_one(&conn, &canon, &source, true, &mut yes_reader()).unwrap();
 
@@ -541,7 +371,7 @@ mod tests {
         let album = source.join("album");
         let src_file = album.join("img.jpg");
         write_file(&src_file, b"photo");
-        insert_file(&conn, &src_file, "hash_x");
+        db::upsert_file(&conn, &src_file, "hash_x", 5, 0).unwrap();
 
         merge_one(&conn, &canon, &source, true, &mut yes_reader()).unwrap();
 
@@ -555,8 +385,31 @@ mod tests {
         fs::create_dir_all(&canon).unwrap();
         let conn = open_test_db();
 
-        // Should complete without error or modification
         let sources: &[&Path] = &[canon.as_path()];
         merge_into_canon(&conn, &canon, sources, true).unwrap();
+    }
+
+    #[test]
+    fn test_merge_db_record_moves_with_file() {
+        let dir = tempdir().unwrap();
+        let canon = dir.path().join("canon");
+        let source = dir.path().join("source");
+        fs::create_dir_all(&canon).unwrap();
+        let conn = open_test_db();
+
+        let src_file = source.join("img.jpg");
+        write_file(&src_file, b"data");
+        db::upsert_file(&conn, &src_file, "hash_abc", 4, 0).unwrap();
+
+        merge_one(&conn, &canon, &source, true, &mut yes_reader()).unwrap();
+
+        let dest = canon.join("img.jpg");
+        let rec = db::get_file(&conn, &dest).unwrap();
+        assert!(rec.is_some(), "DB record should exist at new path");
+        assert_eq!(rec.unwrap().hash, "hash_abc");
+        assert!(
+            db::get_file(&conn, &src_file).unwrap().is_none(),
+            "old DB record should be gone"
+        );
     }
 }

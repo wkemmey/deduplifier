@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::db;
-use crate::scan::FileEntry;
+use crate::scan;
 
 pub fn count_files(root: &Path) -> Result<usize> {
     let mut count = 0;
@@ -41,7 +41,7 @@ pub fn compute_file_hash(path: &Path) -> Result<String> {
 pub fn compute_directory_hash(
     conn: &Connection,
     dir_path: &Path,
-    files_by_dir: &HashMap<PathBuf, Vec<FileEntry>>,
+    files_by_dir: &HashMap<PathBuf, Vec<scan::FileEntry>>,
 ) -> Result<()> {
     // child files and directories in dir_path, as (name, hash, size) tuples
     let mut children = Vec::new();
@@ -212,12 +212,12 @@ mod tests {
         files_by_dir.insert(
             dir.path().to_path_buf(),
             vec![
-                FileEntry {
+                scan::FileEntry {
                     path: dir.path().join("a.txt").to_str().unwrap().to_string(),
                     hash: "hash_a".to_string(),
                     size: 10,
                 },
-                FileEntry {
+                scan::FileEntry {
                     path: dir.path().join("b.txt").to_str().unwrap().to_string(),
                     hash: "hash_b".to_string(),
                     size: 20,
@@ -249,7 +249,7 @@ mod tests {
         let mut files_a = HashMap::new();
         files_a.insert(
             dir.path().to_path_buf(),
-            vec![FileEntry {
+            vec![scan::FileEntry {
                 path: dir.path().join("a.txt").to_str().unwrap().to_string(),
                 hash: "hash_a".to_string(),
                 size: 10,
@@ -258,7 +258,7 @@ mod tests {
         let mut files_b = HashMap::new();
         files_b.insert(
             dir.path().to_path_buf(),
-            vec![FileEntry {
+            vec![scan::FileEntry {
                 path: dir.path().join("a.txt").to_str().unwrap().to_string(),
                 hash: "hash_different".to_string(),
                 size: 10,
@@ -326,12 +326,12 @@ mod tests {
         files_by_dir.insert(
             dir.path().to_path_buf(),
             vec![
-                FileEntry {
+                scan::FileEntry {
                     path: dir.path().join("a.txt").to_str().unwrap().to_string(),
                     hash: "h1".to_string(),
                     size: 100,
                 },
-                FileEntry {
+                scan::FileEntry {
                     path: dir.path().join("b.txt").to_str().unwrap().to_string(),
                     hash: "h2".to_string(),
                     size: 200,

@@ -1,6 +1,6 @@
 use crate::db;
-use crate::hashing::{compute_directory_hash, compute_file_hash};
-use crate::utils::path_to_str;
+use crate::hashing;
+use crate::utils;
 use anyhow::Result;
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -48,7 +48,7 @@ fn scan_files(
             let modified = metadata.modified()?;
             let size = metadata.len();
 
-            let path_str = match path_to_str(path) {
+            let path_str = match utils::path_to_str(path) {
                 Ok(s) => s.to_string(),
                 Err(e) => {
                     eprintln!("\nWarning: skipping file with invalid UTF-8 path: {}", e);
@@ -60,7 +60,7 @@ fn scan_files(
             db::mark_visited(conn, &path_str)?;
 
             if db::should_update_file(conn, path, modified)? {
-                match compute_file_hash(path) {
+                match hashing::compute_file_hash(path) {
                     Ok(hash) => {
                         let modified_secs =
                             modified.duration_since(SystemTime::UNIX_EPOCH)?.as_secs() as i64;
@@ -120,7 +120,7 @@ fn compute_directory_hashes(
     dir_entries.sort_by(|a, b| b.components().count().cmp(&a.components().count()));
 
     for dir_path in dir_entries {
-        compute_directory_hash(conn, &dir_path, files_by_dir)?;
+        hashing::compute_directory_hash(conn, &dir_path, files_by_dir)?;
     }
     Ok(())
 }
@@ -136,7 +136,7 @@ pub fn scan_directory(
     let mut files_by_dir: HashMap<PathBuf, Vec<FileEntry>> = HashMap::new();
     let invalid_paths = scan_files(conn, root, total_files, &mut files_by_dir)?;
 
-    let root_str = path_to_str(root)?.to_string();
+    let root_str = utils::path_to_str(root)?.to_string();
     println!("\nChecking for stale database entries (this may take several minutes for large directories)...");
     io::stdout().flush()?;
 

@@ -66,3 +66,9 @@ So the order: scan.rs → duplicates.rs → merge.rs + photos.rs (together, sinc
 
 
 consitent ordering of use commands--global to local
+
+
+
+
+
+One question before we proceed: should file_system::move_file be used for fs::rename? Rename is atomic on the same filesystem but fails across filesystems; file_system::move_file may handle the cross-filesystem case (copy + delete). In merge.rs this matters since canon and source could be on different volumes. What does file_system.rs currently expose?

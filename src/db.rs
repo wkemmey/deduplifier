@@ -1,4 +1,4 @@
-use crate::utils::path_to_str;
+use crate::utils;
 use anyhow::Result;
 use rusqlite::{params, Connection};
 use std::path::Path;
@@ -84,7 +84,7 @@ pub fn should_update_file(conn: &Connection, path: &Path, modified: SystemTime) 
 
 /// Fetch a single file record by path; returns `None` if not found.
 pub fn get_file(conn: &Connection, path: &Path) -> Result<Option<FileRecord>> {
-    let path_str = path_to_str(path)?;
+    let path_str = utils::path_to_str(path)?;
     let result = conn
         .prepare("SELECT path, hash, size, modified FROM files WHERE path = ?1")?
         .query_row(params![path_str], |row| {
@@ -166,7 +166,7 @@ pub fn upsert_file(
     size: i64,
     modified: i64,
 ) -> Result<()> {
-    let path_str = path_to_str(path)?;
+    let path_str = utils::path_to_str(path)?;
     conn.execute(
         "INSERT OR REPLACE INTO files (path, hash, size, modified) VALUES (?1, ?2, ?3, ?4)",
         params![path_str, hash, size, modified],
@@ -176,8 +176,8 @@ pub fn upsert_file(
 
 /// Rename a file record from `old_path` to `new_path`.
 pub fn move_file(conn: &Connection, old_path: &Path, new_path: &Path) -> Result<()> {
-    let old = path_to_str(old_path)?;
-    let new = path_to_str(new_path)?;
+    let old = utils::path_to_str(old_path)?;
+    let new = utils::path_to_str(new_path)?;
     conn.execute(
         "UPDATE files SET path = ?1 WHERE path = ?2",
         params![new, old],
@@ -187,14 +187,14 @@ pub fn move_file(conn: &Connection, old_path: &Path, new_path: &Path) -> Result<
 
 /// Delete a single file record.
 pub fn remove_file(conn: &Connection, path: &Path) -> Result<()> {
-    let path_str = path_to_str(path)?;
+    let path_str = utils::path_to_str(path)?;
     conn.execute("DELETE FROM files WHERE path = ?1", params![path_str])?;
     Ok(())
 }
 
 /// Update only the hash of an existing file record.
 pub fn update_file_hash(conn: &Connection, path: &Path, hash: &str) -> Result<()> {
-    let path_str = path_to_str(path)?;
+    let path_str = utils::path_to_str(path)?;
     conn.execute(
         "UPDATE files SET hash = ?1 WHERE path = ?2",
         params![hash, path_str],
@@ -279,7 +279,7 @@ pub fn all_directory_paths(conn: &Connection) -> Result<Vec<String>> {
 /// Return the immediate child directories of `dir_path` stored in the DB.
 /// "Immediate" means exactly one level deeper — no grandchildren.
 pub fn child_directories(conn: &Connection, dir_path: &Path) -> Result<Vec<DirRecord>> {
-    let path_str = path_to_str(dir_path)?;
+    let path_str = utils::path_to_str(dir_path)?;
     let sep = std::path::MAIN_SEPARATOR;
     let bare_path = path_str.trim_end_matches(sep);
     let child_pattern = format!("{bare_path}{sep}%");
@@ -342,7 +342,7 @@ pub fn duplicate_directory_groups(conn: &Connection) -> Result<Vec<DuplicateGrou
 
 /// Insert or replace a directory record.
 pub fn upsert_directory(conn: &Connection, path: &Path, hash: &str, size: i64) -> Result<()> {
-    let path_str = path_to_str(path)?;
+    let path_str = utils::path_to_str(path)?;
     conn.execute(
         "INSERT OR REPLACE INTO directories (path, hash, size) VALUES (?1, ?2, ?3)",
         params![path_str, hash, size],
@@ -353,7 +353,7 @@ pub fn upsert_directory(conn: &Connection, path: &Path, hash: &str, size: i64) -
 /// Delete all file records and all directory records whose path starts with
 /// `path` (inclusive). Use this for bulk removal of an entire directory tree.
 pub fn remove_tree(conn: &Connection, path: &Path) -> Result<()> {
-    let path_str = path_to_str(path)?;
+    let path_str = utils::path_to_str(path)?;
     let sep = std::path::MAIN_SEPARATOR;
     let bare_path = path_str.trim_end_matches(sep);
     // Match the root itself OR anything directly under it, but not siblings

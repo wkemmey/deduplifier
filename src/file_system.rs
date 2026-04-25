@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use walkdir::WalkDir;
 
 // ---------------------------------------------------------------------------
 // File operations
@@ -52,6 +53,34 @@ pub fn delete_dir_if_empty(path: &Path) -> Result<bool> {
 /// Recursively delete `path` and everything inside it.
 pub fn delete_dir_all(path: &Path) -> Result<()> {
     fs::remove_dir_all(path).with_context(|| format!("removing directory tree {}", path.display()))
+}
+
+/// Walk `root` bottom-up (deepest subdirectory first) and remove any empty
+/// subdirectory. The root itself is never removed.
+pub fn delete_empty_subdirs(root: &Path) -> Result<()> {
+    let mut dirs: Vec<std::path::PathBuf> = WalkDir::new(root)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_dir())
+        .map(|e| e.into_path())
+        .collect();
+
+    // Deepest first so we remove children before parents
+    dirs.sort_by(|a, b| b.components().count().cmp(&a.components().count()));
+
+    for dir in &dirs {
+        let Ok(mut entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        if entries.next().is_none() {
+            match fs::remove_dir(dir) {
+                Ok(()) => println!("  Removed empty dir: {}", dir.display()),
+                Err(e) => eprintln!("  Warning: could not remove {}: {}", dir.display(), e),
+            }
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +270,59 @@ mod tests {
         let target = dir.path().join("nonexistent");
 
         assert!(delete_dir_all(&target).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // delete_empty_subdirs
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_delete_empty_subdirs_removes_empty_child() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let empty = root.join("empty_sub");
+        fs::create_dir(&empty).unwrap();
+
+        delete_empty_subdirs(root).unwrap();
+
+        assert!(!empty.exists(), "empty subdir should be removed");
+        assert!(root.exists(), "root should not be removed");
+    }
+
+    #[test]
+    fn test_delete_empty_subdirs_keeps_nonempty_child() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let sub = root.join("sub");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("file.txt"), b"x").unwrap();
+
+        delete_empty_subdirs(root).unwrap();
+
+        assert!(sub.exists(), "non-empty subdir should remain");
+    }
+
+    #[test]
+    fn test_delete_empty_subdirs_removes_nested_empty() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        // root/a/b — both empty
+        fs::create_dir_all(root.join("a/b")).unwrap();
+
+        delete_empty_subdirs(root).unwrap();
+
+        assert!(!root.join("a/b").exists());
+        assert!(!root.join("a").exists());
+        assert!(root.exists());
+    }
+
+    #[test]
+    fn test_delete_empty_subdirs_never_removes_root() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        // root is itself empty (no children at all)
+        delete_empty_subdirs(root).unwrap();
+        assert!(root.exists(), "root must never be deleted");
     }
 
     // -----------------------------------------------------------------------

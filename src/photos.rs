@@ -1,15 +1,12 @@
-use std::collections::HashSet;
 use std::fs;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use walkdir::WalkDir;
 
-use crate::hashing::compute_file_hash;
-use crate::utils::path_to_str;
+use crate::{db, file_system, hashing, utils};
 
 // ---------------------------------------------------------------------------
 // Known media extensions (lowercase)
@@ -63,7 +60,7 @@ fn sort_root(conn: &Connection, root: &Path, canon: &Path) -> Result<()> {
     let mut deleted_dups = 0usize;
 
     for src in &files {
-        let date = photo_date(src);
+        let date = photo_date(src)?;
         let dest_dir = dest_root
             .join(format!("{:04}", date.0))
             .join(format!("{:04}-{:02}", date.0, date.1))
@@ -85,7 +82,7 @@ fn sort_root(conn: &Connection, root: &Path, canon: &Path) -> Result<()> {
                 println!("  Duplicate (same hash): removing {}", src.display());
                 fs::remove_file(src)
                     .with_context(|| format!("removing duplicate {}", src.display()))?;
-                db_remove_file(conn, src);
+                db::remove_file(conn, src)?;
                 deleted_dups += 1;
             }
             DestResult::Path(dest) => {
@@ -94,7 +91,7 @@ fn sort_root(conn: &Connection, root: &Path, canon: &Path) -> Result<()> {
                 fs::rename(src, &dest)
                     .with_context(|| format!("moving {} -> {}", src.display(), dest.display()))?;
                 println!("  Moved: {} -> {}", src.display(), dest.display());
-                db_move_file(conn, src, &dest);
+                db::move_file(conn, src, &dest)?;
                 moved += 1;
             }
         }
@@ -106,7 +103,7 @@ fn sort_root(conn: &Connection, root: &Path, canon: &Path) -> Result<()> {
     );
 
     // Delete now-empty subdirectories (but never the root itself)
-    cleanup_empty_dirs(conn, root, dest_root)?;
+    file_system::delete_empty_subdirs(root)?;
 
     Ok(())
 }
@@ -145,9 +142,9 @@ fn resolve_dest(src: &Path, dest_dir: &Path, conn: &Connection) -> Result<DestRe
         }
 
         // File exists at destination — compare hashes
-        let src_hash =
-            compute_file_hash(src).with_context(|| format!("hashing {}", src.display()))?;
-        let dest_hash = compute_file_hash(&candidate)
+        let src_hash = hashing::compute_file_hash(src)
+            .with_context(|| format!("hashing {}", src.display()))?;
+        let dest_hash = hashing::compute_file_hash(&candidate)
             .with_context(|| format!("hashing {}", candidate.display()))?;
 
         if src_hash == dest_hash {
@@ -169,9 +166,9 @@ fn resolve_dest(src: &Path, dest_dir: &Path, conn: &Connection) -> Result<DestRe
 
 /// Returns (year, month, day) for the file.
 /// Tries EXIF DateTimeOriginal first; falls back to mtime.
-fn photo_date(path: &Path) -> (i32, u32, u32) {
+fn photo_date(path: &Path) -> Result<(i32, u32, u32)> {
     if let Some(date) = exif_date(path) {
-        return date;
+        return Ok(date);
     }
     mtime_date(path)
 }
@@ -224,166 +221,8 @@ fn parse_exif_date(s: &str) -> Option<(i32, u32, u32)> {
     Some((year, month, day))
 }
 
-fn mtime_date(path: &Path) -> (i32, u32, u32) {
-    let secs = fs::metadata(path)
-        .and_then(|m| m.modified())
-        .map(|t| {
-            t.duration_since(UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0)
-        })
-        .unwrap_or(0);
-    secs_to_ymd(secs)
-}
-
-/// Convert Unix timestamp (seconds) to (year, month, day).
-fn secs_to_ymd(secs: i64) -> (i32, u32, u32) {
-    let secs = secs.max(0) as u64;
-    let days = secs / 86400;
-    let mut y = 1970i32;
-    let mut d = days;
-    loop {
-        let leap = is_leap(y);
-        let days_in_year = if leap { 366 } else { 365 };
-        if d < days_in_year {
-            break;
-        }
-        d -= days_in_year;
-        y += 1;
-    }
-    let month_days: [u64; 12] = [
-        31,
-        if is_leap(y) { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
-    let mut month = 1u32;
-    for &md in &month_days {
-        if d < md {
-            break;
-        }
-        d -= md;
-        month += 1;
-    }
-    (y, month, (d + 1) as u32)
-}
-
-fn is_leap(y: i32) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
-}
-
-// ---------------------------------------------------------------------------
-// Empty directory cleanup
-// ---------------------------------------------------------------------------
-
-/// Walk `root` bottom-up and remove any empty subdirectory (never removes root
-/// itself or dest_root itself).
-fn cleanup_empty_dirs(conn: &Connection, root: &Path, dest_root: &Path) -> Result<()> {
-    // Collect all dirs under root, sorted deepest-first
-    let mut dirs: Vec<PathBuf> = WalkDir::new(root)
-        .min_depth(1)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_dir())
-        .map(|e| e.into_path())
-        .collect();
-
-    // Also collect dirs under dest_root if different from root
-    if dest_root != root {
-        let extra: Vec<PathBuf> = WalkDir::new(dest_root)
-            .min_depth(1)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_dir())
-            .map(|e| e.into_path())
-            .collect();
-        for d in extra {
-            if !dirs.contains(&d) {
-                dirs.push(d);
-            }
-        }
-    }
-
-    // Sort deepest first (longest path first)
-    dirs.sort_by(|a, b| b.components().count().cmp(&a.components().count()));
-
-    let protected: HashSet<PathBuf> = [root.to_path_buf(), dest_root.to_path_buf()]
-        .into_iter()
-        .collect();
-
-    for dir in &dirs {
-        if protected.contains(dir.as_path()) {
-            continue;
-        }
-        // Try to read the directory; if empty, remove it
-        let Ok(mut entries) = fs::read_dir(dir) else {
-            continue;
-        };
-        if entries.next().is_none() {
-            match fs::remove_dir(dir) {
-                Ok(()) => {
-                    println!("  Removed empty dir: {}", dir.display());
-                    db_remove_dir(conn, dir);
-                }
-                Err(e) => {
-                    eprintln!("  Warning: could not remove {}: {}", dir.display(), e);
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Database helpers
-// ---------------------------------------------------------------------------
-
-fn db_move_file(conn: &Connection, old_path: &Path, new_path: &Path) {
-    match (path_to_str(old_path), path_to_str(new_path)) {
-        (Ok(old), Ok(new)) => {
-            if let Err(e) = conn.execute(
-                "UPDATE files SET path = ?1 WHERE path = ?2",
-                rusqlite::params![new, old],
-            ) {
-                eprintln!("Warning: DB update failed for {}: {}", old, e);
-            }
-        }
-        _ => eprintln!("Warning: non-UTF-8 path, skipping DB update"),
-    }
-}
-
-fn db_remove_file(conn: &Connection, path: &Path) {
-    if let Ok(p) = path_to_str(path) {
-        if let Err(e) = conn.execute("DELETE FROM files WHERE path = ?1", rusqlite::params![p]) {
-            eprintln!("Warning: DB delete failed for {}: {}", p, e);
-        }
-    }
-}
-
-fn db_remove_dir(conn: &Connection, path: &Path) {
-    if let Ok(p) = path_to_str(path) {
-        // Remove the directory record and all files under it
-        if let Err(e) = conn.execute(
-            "DELETE FROM files WHERE path LIKE ?1 || '/%'",
-            rusqlite::params![p],
-        ) {
-            eprintln!("Warning: DB cleanup failed for dir {}: {}", p, e);
-        }
-        if let Err(e) = conn.execute(
-            "DELETE FROM directories WHERE path = ?1",
-            rusqlite::params![p],
-        ) {
-            eprintln!("Warning: DB cleanup failed for dir {}: {}", p, e);
-        }
-    }
+fn mtime_date(path: &Path) -> Result<(i32, u32, u32)> {
+    Ok(utils::secs_to_ymd(utils::mtime(path)?))
 }
 
 // ---------------------------------------------------------------------------
@@ -397,10 +236,6 @@ fn is_media(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 // ------------------------------------------------------------------
 //
 //
@@ -412,14 +247,15 @@ fn is_media(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::setup_schema;
+    use crate::utils::secs_to_ymd;
     use rusqlite::Connection;
     use std::fs;
+    use std::time::UNIX_EPOCH;
     use tempfile::tempdir;
 
     fn open_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        setup_schema(&conn).unwrap();
+        db::setup_schema(&conn).unwrap();
         conn
     }
 
@@ -450,43 +286,6 @@ mod tests {
     #[test]
     fn test_parse_exif_date_garbage() {
         assert_eq!(parse_exif_date("not a date"), None);
-    }
-
-    // -- Unit: secs_to_ymd ---------------------------------------------------
-
-    #[test]
-    fn test_secs_to_ymd_epoch() {
-        // 1970-01-01
-        assert_eq!(secs_to_ymd(0), (1970, 1, 1));
-    }
-
-    #[test]
-    fn test_secs_to_ymd_known_date() {
-        // 2009-01-05 UTC midnight = 1231113600
-        assert_eq!(secs_to_ymd(1231113600), (2009, 1, 5));
-    }
-
-    #[test]
-    fn test_secs_to_ymd_leap_day() {
-        // 2000-02-29 (2000 is a leap year)
-        // Days from 1970-01-01 to 2000-02-29 = 11016
-        assert_eq!(secs_to_ymd(11016 * 86400), (2000, 2, 29));
-    }
-
-    #[test]
-    fn test_secs_to_ymd_negative_clamped() {
-        // Negative timestamps clamp to epoch
-        assert_eq!(secs_to_ymd(-1000), (1970, 1, 1));
-    }
-
-    // -- Unit: is_leap -------------------------------------------------------
-
-    #[test]
-    fn test_is_leap_regular() {
-        assert!(is_leap(2000));
-        assert!(is_leap(2004));
-        assert!(!is_leap(1900));
-        assert!(!is_leap(2001));
     }
 
     // -- Unit: is_media ------------------------------------------------------
