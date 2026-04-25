@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::{file_system, utils};
+use crate::{db, file_system, utils};
 
 /// One side of a similar-directory pair, with its diff relative to the other side.
 #[derive(Debug)]
@@ -45,37 +45,28 @@ pub type DirIndex = HashMap<String, FileMap>;
 /// its immediate parent directory path, then by relative path within that dir.
 /// One DB query replaces hundreds of per-pair LIKE queries.
 pub fn build_dir_index(conn: &Connection, scanned_dirs: &[&Path]) -> Result<DirIndex> {
-    let mut stmt = conn.prepare("SELECT path, hash, modified FROM files ORDER BY path")?;
-    let rows: Vec<(String, String, i64)> = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<_>>()?;
+    let rows = db::all_files(conn)?;
 
     let mut index: DirIndex = HashMap::new();
-    for (abs_path, hash, modified) in rows {
+    for row in rows {
         // Filter to scanned roots if any are specified
         if !scanned_dirs.is_empty() {
-            let p = Path::new(&abs_path);
+            let p = Path::new(&row.path);
             if !scanned_dirs.iter().any(|root| p.starts_with(root)) {
                 continue;
             }
         }
         // Attribute the file to its immediate parent directory
-        if let Some(parent) = Path::new(&abs_path).parent() {
+        if let Some(parent) = Path::new(&row.path).parent() {
             let dir_str = parent.to_string_lossy().to_string();
-            let rel = Path::new(&abs_path)
+            let rel = Path::new(&row.path)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
             index
                 .entry(dir_str)
                 .or_default()
-                .insert(rel, (abs_path, hash, modified));
+                .insert(rel, (row.path, row.hash, row.modified));
         }
     }
     Ok(index)
@@ -85,16 +76,10 @@ pub fn build_dir_index(conn: &Connection, scanned_dirs: &[&Path]) -> Result<DirI
 /// A leaf directory is one that has no subdirectory entries in `directories`
 /// whose path starts with `that_dir/`.
 fn find_leaf_directories(conn: &Connection, scanned_dirs: &[&Path]) -> Result<Vec<String>> {
-    let all_dirs: Vec<String> = {
-        let mut stmt = conn.prepare("SELECT path FROM directories ORDER BY path")?;
-        let rows: Vec<String> = stmt
-            .query_map([], |row| row.get::<_, String>(0))?
-            .collect::<rusqlite::Result<_>>()?;
-        rows
-    };
+    let all_dir_paths = db::all_directory_paths(conn)?;
 
     // Filter to only those under a scanned root
-    let under_scan: Vec<String> = all_dirs
+    let under_scan: Vec<String> = all_dir_paths
         .into_iter()
         .filter(|p| {
             if scanned_dirs.is_empty() {
@@ -405,13 +390,7 @@ fn compute_similar_pairs(
     let dir_index = build_dir_index(conn, scanned_dirs)?;
 
     // Set of all known directory paths (for walk-up parent checks)
-    let all_dir_paths: HashSet<String> = {
-        let mut stmt = conn.prepare("SELECT path FROM directories")?;
-        let paths: HashSet<String> = stmt
-            .query_map([], |row| row.get::<_, String>(0))?
-            .collect::<rusqlite::Result<HashSet<String>>>()?;
-        paths
-    };
+    let all_dir_paths: HashSet<String> = db::all_directory_paths(conn)?.into_iter().collect();
 
     // ------------------------------------------------------------------
     // Phase 2: find leaf directories

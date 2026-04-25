@@ -105,6 +105,23 @@ pub fn get_file(conn: &Connection, path: &Path) -> Result<Option<FileRecord>> {
     }
 }
 
+/// Return all file records, ordered by path.
+pub fn all_files(conn: &Connection) -> Result<Vec<FileRecord>> {
+    let mut stmt =
+        conn.prepare("SELECT path, hash, size, modified FROM files ORDER BY path")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(FileRecord {
+                path: row.get(0)?,
+                hash: row.get(1)?,
+                size: row.get(2)?,
+                modified: row.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 /// Return all file records with the given hash, ordered by path.
 pub fn files_with_hash(conn: &Connection, hash: &str) -> Result<Vec<FileRecord>> {
     let mut stmt =
@@ -251,6 +268,16 @@ pub struct DirRecord {
     pub path: String,
     pub hash: String,
     pub size: i64,
+}
+
+/// Return all directory paths, ordered by path.
+/// Used by similar to load the full directory set in one query.
+pub fn all_directory_paths(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT path FROM directories ORDER BY path")?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
 }
 
 /// Return the immediate child directories of `dir_path` stored in the DB.
