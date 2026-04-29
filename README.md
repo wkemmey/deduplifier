@@ -25,6 +25,14 @@ cargo build --release
 
 The binary will be available at `target/release/deduplifier`.
 
+### Build for Windows
+
+```bash
+cargo build --release --target x86_64-pc-windows-gnu
+```
+
+The binary will e available at `target/x86_64-pc-windows-gnu/release/deduplifier.exe`.
+
 ## Usage
 
 ```bash

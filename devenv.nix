@@ -7,6 +7,7 @@
     enable = true;
     # using stable channel by default, can override per-project
     # channel = "stable"; # requires rust-overlay input
+    targets = [ "x86_64-pc-windows-gnu" ];
   };
 
   # common rust development packages
@@ -34,6 +35,9 @@
     # additional tools
     bacon            # background code checker
     rust-analyzer    # LSP server (devenv includes this but explicit is good)
+
+    # cross-compilation to Windows
+    pkgsCross.mingwW64.stdenv.cc  # MinGW-w64 linker/compiler
   ];
 
   # git hooks for code quality
@@ -57,6 +61,11 @@
     # run with backtrace
     run-debug.exec = "RUST_BACKTRACE=full cargo run";
     
+    # build a Windows .exe (requires: rustup target add x86_64-pc-windows-gnu)
+    build-windows.exec = ''cargo build --release --target x86_64-pc-windows-gnu'';
+
+    build-windows-test.exec = ''cargo test --no-run --target x86_64-pc-windows-gnu''
+
     # check everything
     check-all.exec = ''
       cargo fmt --check &&
