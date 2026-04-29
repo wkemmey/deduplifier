@@ -10,6 +10,36 @@ use crate::utils;
 pub const EMPTY_DIR_HASH: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 // ---------------------------------------------------------------------------
+// Structs
+// ---------------------------------------------------------------------------
+
+/// A row from the `files` table.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileRecord {
+    pub path: String,
+    pub hash: String,
+    pub size: i64,
+    pub modified: i64,
+}
+
+/// A summary row from a duplicate-group query.
+/// `size` is `SUM(size)` for file groups and `MAX(size)` for directory groups.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DuplicateGroupHash {
+    pub hash: String,
+    pub count: i64,
+    pub size: i64,
+}
+
+/// A row from the `directories` table.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DirRecord {
+    pub path: String,
+    pub hash: String,
+    pub size: i64,
+}
+
+// ---------------------------------------------------------------------------
 // Schema / connection
 // ---------------------------------------------------------------------------
 
@@ -55,24 +85,6 @@ pub fn init_database(path: &Path) -> Result<Connection> {
 // ---------------------------------------------------------------------------
 // File records
 // ---------------------------------------------------------------------------
-
-/// A row from the `files` table.
-#[derive(Debug, Clone, PartialEq)]
-pub struct FileRecord {
-    pub path: String,
-    pub hash: String,
-    pub size: i64,
-    pub modified: i64,
-}
-
-/// A summary row from a duplicate-group query.
-/// `size` is `SUM(size)` for file groups and `MAX(size)` for directory groups.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DuplicateGroupHash {
-    pub hash: String,
-    pub count: i64,
-    pub size: i64,
-}
 
 /// Returns `true` if the file at `path` is not in the DB, or its stored
 /// modified timestamp differs from `modified`.
@@ -261,16 +273,8 @@ pub fn delete_stale_files(conn: &Connection, root_prefix: &str) -> Result<()> {
 // Directory records
 // ---------------------------------------------------------------------------
 
-/// A row from the `directories` table.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DirRecord {
-    pub path: String,
-    pub hash: String,
-    pub size: i64,
-}
-
 /// Return all directory paths, ordered by path.
-/// Used by similar to load the full directory set in one query.
+/// Used by similar.rs to load the full directory set in one query.
 pub fn all_directory_paths(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt = conn.prepare("SELECT path FROM directories ORDER BY path")?;
     let rows = stmt

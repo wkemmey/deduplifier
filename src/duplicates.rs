@@ -12,8 +12,14 @@ pub struct DirEntry {
     pub size: i64,
 }
 
+/// A single file instance that is a member of a duplicate file group.
+pub struct FileEntry {
+    pub path: String,
+    pub size: i64,
+}
+
 /// A set of directories that all share the same hash, along with aggregate metadata.
-pub struct DuplicateGroup {
+pub struct DuplicateDirGroup {
     pub hash: String,
     pub max_size: i64,
     pub members: Vec<DirEntry>,
@@ -24,14 +30,17 @@ pub struct DuplicateFileGroup {
     pub hash: String,
     pub count: i64,
     pub total_size: i64,
-    pub files: Vec<db::FileRecord>,
+    pub files: Vec<FileEntry>,
 }
 
 pub fn find_duplicate_files(conn: &Connection) -> Result<Vec<DuplicateFileGroup>> {
     let groups = db::duplicate_file_groups(conn)?;
     let mut result = Vec::new();
     for group in groups {
-        let files = db::files_with_hash(conn, &group.hash)?;
+        let files = db::files_with_hash(conn, &group.hash)?
+            .into_iter()
+            .map(|r| FileEntry { path: r.path, size: r.size })
+            .collect();
         result.push(DuplicateFileGroup {
             hash: group.hash,
             count: group.count,
@@ -52,8 +61,8 @@ pub fn build_top_level_groups(
     conn: &Connection,
     duplicate_group_hashes: &[db::DuplicateGroupHash],
     scanned_dirs: &[&Path],
-) -> Result<(Vec<DuplicateGroup>, usize)> {
-    let mut groups: Vec<DuplicateGroup> = Vec::new();
+) -> Result<(Vec<DuplicateDirGroup>, usize)> {
+    let mut groups: Vec<DuplicateDirGroup> = Vec::new();
 
     for group in duplicate_group_hashes {
         // find dirs with matching hash
@@ -77,7 +86,7 @@ pub fn build_top_level_groups(
         // drop groups with fewer than 2 members after filtering
         // (not duplicate if only 1 in scanned scope)
         if members.len() >= 2 {
-            groups.push(DuplicateGroup {
+            groups.push(DuplicateDirGroup {
                 hash: group.hash.clone(),
                 max_size: group.size,
                 members,
@@ -111,7 +120,7 @@ pub fn build_top_level_groups(
         .collect();
     let covered_count = covered_hashes.len();
 
-    let top_level: Vec<DuplicateGroup> = groups
+    let top_level: Vec<DuplicateDirGroup> = groups
         .into_iter()
         .filter(|g| !covered_hashes.contains(&g.hash))
         .collect();

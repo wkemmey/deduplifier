@@ -34,7 +34,6 @@ Options:
   add --prune, which deletes all files in a directory tree that have duplicates elsewhere -- just thinking about this, not sure yet
 
 
-refactor so ui is separate from logic--e.g., similar.rs shouldn't have both computation and prints
 
 
 remember to put updated direnv.nix in nixos config project
@@ -44,6 +43,15 @@ do i want to rename should_update_file to something that makes more sense and is
 run tests on windows
 
 should count_files be moved to main, or wherever the gui code is?
+
+
+## Interactive TUI (future idea)
+
+Two options for adding an interactive shell UI (directory picker, operation selector, progress display, conflict prompts):
+
+1. **`inquire` (wizard/prompt style):** Easiest. Provides fuzzy multi-select, confirms, and prompts out of the box. Directory picking would be a fuzzy-filtered multi-select over a walked directory tree. ~1 day of work. No full-screen UI, just guided prompts in sequence.
+
+2. **`ratatui` + `crossterm` (full TUI):** Full-screen terminal UI with layout, widgets, and keyboard navigation. Directory picker would need to be hand-rolled (no built-in widget). Logic callbacks (`on_progress`, `on_event`, etc.) map cleanly to TUI updates. Long-running operations would need a background thread + `mpsc` channel to keep the UI responsive. ~3–5 days of work.
 
 
 

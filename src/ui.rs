@@ -318,7 +318,7 @@ pub fn show_duplicate_file_group(
     hash: &str,
     count: i64,
     total_size: i64,
-    records: &[db::FileRecord],
+    records: &[duplicates::FileEntry],
 ) {
     let hash_display = if hash.len() >= 16 { &hash[..16] } else { hash };
     println!(
@@ -345,7 +345,7 @@ pub fn show_dup_dirs_summary(top_level: usize, covered: usize) {
     );
 }
 
-pub fn show_dup_dir_group(group: &duplicates::DuplicateGroup) {
+pub fn show_dup_dir_group(group: &duplicates::DuplicateDirGroup) {
     let hash_display = if group.hash.len() >= 16 {
         &group.hash[..16]
     } else {
