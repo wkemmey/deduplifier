@@ -34655,3 +34655,2531 @@ It's worth fixing, but not urgent until you actually try running the test binary
 
 ---
 
+_**User (2026-04-29 22:07Z)**_
+
+devenv reload gave errors
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="read" data-tool-name="copilot_readFile">
+<details>
+<summary>Tool use: **copilot_readFile** • Reading [](file:///home/whit/projects/deduplifier/devenv.nix#1-1), lines 1 to 75</summary>
+
+
+Read [](file:///home/whit/projects/deduplifier/devenv.nix#1-1), lines 1 to 75
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_multiReplaceString">
+<details>
+<summary>Tool use: **copilot_multiReplaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_multiReplaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Multi-Replace String in Files\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;nix\n    # build a Windows .exe\n    build-windows.exec = ''cargo build --release --target x86_64-pc-windows-gnu'';\n\n    build-windows-test.exec = ''cargo test --no-run --target x86_64-pc-windows-gnu'';\n\n    # cross-compilation to Windows\n    mingw-w64  # MinGW-w64 linker/compiler\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    # build a Windows .exe\n    build-windows.exec = ''cargo build --release --target x86_64-pc-windows-gnu'';\n\n    build-windows-test.exec = ''cargo test --no-run --target x86_64-pc-windows-gnu'';\n    # cross-compilation to Windows\n    mingw-w64  # MinGW-w64 linker/compiler",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+Let me look at the current devenv.nix to see what it looks like after the user's edits.Two issues: the `build-windows-test` script is missing a semicolon, and the comment on `build-windows` still says `requires: rustup` which isn't accurate for Nix. Also `pkgsCross.mingwW64.stdenv.cc` can cause evaluation errors in some devenv versions — `mingw-w64` (the standalone package) is safer. Try `devenv reload` again. If `mingw-w64` also errors (it's not always available in all nixpkgs channels), share the error message and we can try a different approach — sometimes the right answer is just to let Cargo find the system linker via a `.cargo/config.toml` target override rather than pulling it through Nix.
+
+---
+
+_**User (2026-04-29 22:09Z)**_
+
+❯ devenv reload                                                                                                                                                                     deduplifier  main 
+error: unrecognized subcommand 'reload'
+
+  tip: a similar subcommand exists: 'repl'
+
+Usage: devenv [OPTIONS] [COMMAND]
+
+For more information, try '--help'.
+direnv: loading ~/projects/deduplifier/.envrc
+direnv: using devenv
+• Using Cachix caches: devenv
+error:
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1344:61:
+         1343|   */
+         1344|   genAttrs = names: f: genAttrs' names (n: nameValuePair n (f n));
+             |                                                             ^
+         1345|
+
+       … while calling anonymous lambda
+         at /home/whit/projects/deduplifier/.devenv.flake.nix:492:48:
+          491|     {
+          492|       devShell = nixpkgs.lib.genAttrs systems (s: perSystem.${s}.shell);
+             |                                                ^
+          493|       packages = nixpkgs.lib.genAttrs systems (s: perSystem.${s}.packages);
+
+       … while evaluating the attribute 'x86_64-linux.shell'
+         at /home/whit/projects/deduplifier/.devenv.flake.nix:471:11:
+          470|             ;
+          471|           shell = config.shell;
+             |           ^
+          472|           packages = {
+
+       … from call site
+         at /home/whit/projects/deduplifier/.devenv.flake.nix:471:19:
+          470|             ;
+          471|           shell = config.shell;
+             |                   ^
+          472|           packages = {
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `shell':
+
+       … while evaluating the attribute 'mergedValue'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1192:5:
+         1191|     # Type-check the remaining definitions, and merge them. Or throw if no definitions.
+         1192|     mergedValue =
+             |     ^
+         1193|       if isDefined then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1193:7:
+         1192|     mergedValue =
+         1193|       if isDefined then
+             |       ^
+         1194|         if type.merge ? v2 then
+
+       … while evaluating the attribute 'values'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1186:9:
+         1185|       {
+         1186|         values = defsSorted;
+             |         ^
+         1187|         inherit (defsFiltered) highestPrio;
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:11:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |           ^
+         1181|             sortProperties defsFiltered.values
+
+       … while calling the 'any' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:14:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |              ^
+         1181|             sortProperties defsFiltered.values
+
+       … while evaluating the attribute 'values'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1360:7:
+         1359|     {
+         1360|       values = concatMap (def: if getPrio def == highestPrio then [ (strip def) ] else [ ]) defs;
+             |       ^
+         1361|       inherit highestPrio;
+
+       … while calling the 'concatMap' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1360:16:
+         1359|     {
+         1360|       values = concatMap (def: if getPrio def == highestPrio then [ (strip def) ] else [ ]) defs;
+             |                ^
+         1361|       inherit highestPrio;
+
+       … while calling the 'concatMap' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1160:26:
+         1159|         # Process mkMerge and mkIf properties.
+         1160|         defsNormalized = concatMap (
+             |                          ^
+         1161|           m:
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1161:11:
+         1160|         defsNormalized = concatMap (
+         1161|           m:
+             |           ^
+         1162|           map (
+
+       … while calling the 'map' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1162:11:
+         1161|           m:
+         1162|           map (
+             |           ^
+         1163|             value:
+
+       … while evaluating definitions from `/nix/store/7bmi0fywpjh1lrsq9gngbf8q4r2n13a2-source/src/modules/top-level.nix':
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1171:80:
+         1170|               }
+         1171|           ) (addErrorContext "while evaluating definitions from `${m.file}':" (dischargeProperties m.value))
+             |                                                                                ^
+         1172|         ) defs;
+
+       … while calling 'dischargeProperties'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1311:5:
+         1310|   dischargeProperties =
+         1311|     def:
+             |     ^
+         1312|     if def._type or "" == "merge" then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1312:5:
+         1311|     def:
+         1312|     if def._type or "" == "merge" then
+             |     ^
+         1313|       concatMap dischargeProperties def.contents
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:805:21:
+          804|             inherit (module) file;
+          805|             inherit value;
+             |                     ^
+          806|           }) module.config
+
+       … while calling the 'throw' builtin
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/top-level.nix:33:7:
+           32|     then
+           33|       throw ''
+             |       ^
+           34|         Failed assertions:
+
+       error:
+       error: Failed assertions:
+       - Cannot use `languages.rust.channel = "nixpkgs"` with `languages.rust.targets`.
+
+         The nixpkgs channel does not support cross-compiling with targets.
+         Use the stable, beta, or nightly channels instead. For example:
+
+         languages.rust.channel = "stable";
+✖ Building shell in 2.78s
+Error:   × Command `/nix/store/9jvwcrgk8akzzbvw6irh075aypzr8zbc-devenv-nix-2.30.4/bin/nix --show-trace --extra-experimental-features nix-command --extra-experimental-features flakes --option lazy-trees
+  │ true --option warn-dirty false --keep-going --max-jobs 6 --option eval-cache false --option always-allow-substitutes true --option http-connections 100 --option extra-substituters https://
+  │ devenv.cachix.org --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= print-dev-env --profile /home/whit/projects/deduplifier/.devenv/gc/shell
+  │ -vv --log-format internal-json` failed with exit code 1
+
+direnv: failed to build the devenv environment. devenv.nix may contain errors. see above.
+direnv: export +DEVENV_CMDLINE +DEVENV_DIRENVRC_ROLLING_UPGRADE +DEVENV_DIRENVRC_VERSION
+
+❯ 
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;nix\n  languages.rust = {\n    enable = true;\n    channel = \"stable\";\n    targets = [ \"x86_64-pc-windows-gnu\" ];\n  };\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "  languages.rust = {\n    enable = true;\n    channel = \"stable\";\n    targets = [ \"x86_64-pc-windows-gnu\" ];\n  };",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+The error is clear: "Cannot use `languages.rust.channel = "nixpkgs"` with `languages.rust.targets`." Need to add `channel = "stable"` to the rust config.The error is clear — `targets` requires a non-nixpkgs channel. Just add `channel = "stable"`: Now run `direnv reload` (not `devenv reload` — that's not a valid subcommand). It will take a while on first run since it needs to fetch the stable Rust toolchain via rust-overlay.
+
+---
+
+_**User (2026-04-29 22:14Z)**_
+
+❯ direnv reload                                                                                                                                                                    deduplifier  main !
+direnv: loading ~/projects/deduplifier/.envrc
+direnv: using devenv
+• Using Cachix caches: devenv
+error:
+       … while calling the 'derivationStrict' builtin
+         at <nix/derivation-internal.nix>:37:12:
+           36|
+           37|   strict = derivationStrict drvAttrs;
+             |            ^
+           38|
+
+       … while evaluating derivation 'devenv-shell'
+         whose name attribute is located at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/stdenv/generic/make-derivation.nix:536:13
+
+       … while evaluating attribute 'DEVENV_PROFILE' of derivation 'devenv-shell'
+
+       … while calling the 'getAttr' builtin
+         at <nix/derivation-internal.nix>:50:17:
+           49|     value = commonAttrs // {
+           50|       outPath = builtins.getAttr outputName strict;
+             |                 ^
+           51|       drvPath = strict.drvPath;
+
+       … while calling the 'derivationStrict' builtin
+         at <nix/derivation-internal.nix>:37:12:
+           36|
+           37|   strict = derivationStrict drvAttrs;
+             |            ^
+           38|
+
+       … while evaluating derivation 'devenv-profile'
+         whose name attribute is located at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/stdenv/generic/make-derivation.nix:536:13
+
+       … while evaluating attribute 'passAsFile' of derivation 'devenv-profile'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/trivial-builders/default.nix:81:9:
+           80|         inherit buildCommand name;
+           81|         passAsFile = [ "buildCommand" ] ++ (derivationArgs.passAsFile or [ ]);
+             |         ^
+           82|       }
+
+       … while evaluating the attribute 'passAsFile'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:116:9:
+          115|         # XXX: The size is somewhat arbitrary
+          116|         passAsFile = if builtins.stringLength pkgs >= 128 * 1024 then [ "pkgs" ] else [ ];
+             |         ^
+          117|       }
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:116:22:
+          115|         # XXX: The size is somewhat arbitrary
+          116|         passAsFile = if builtins.stringLength pkgs >= 128 * 1024 then [ "pkgs" ] else [ ];
+             |                      ^
+          117|       }
+
+       … in the argument of the not operator
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:116:52:
+          115|         # XXX: The size is somewhat arbitrary
+          116|         passAsFile = if builtins.stringLength pkgs >= 128 * 1024 then [ "pkgs" ] else [ ];
+             |                                                    ^
+          117|       }
+
+       … while calling the 'lessThan' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:116:52:
+          115|         # XXX: The size is somewhat arbitrary
+          116|         passAsFile = if builtins.stringLength pkgs >= 128 * 1024 then [ "pkgs" ] else [ ];
+             |                                                    ^
+          117|       }
+
+       … while calling the 'stringLength' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:116:25:
+          115|         # XXX: The size is somewhat arbitrary
+          116|         passAsFile = if builtins.stringLength pkgs >= 128 * 1024 then [ "pkgs" ] else [ ];
+             |                         ^
+          117|       }
+
+       … while calling the 'toJSON' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:111:16:
+          110|         pathsToLinkJSON = builtins.toJSON pathsToLink;
+          111|         pkgs = builtins.toJSON chosenOutputs;
+             |                ^
+          112|         extraPathsFrom = lib.optional includeClosures (writeClosure pathsForClosure);
+
+       … while calling the 'map' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:69:21:
+           68|   let
+           69|     chosenOutputs = map (drv: {
+             |                     ^
+           70|       paths =
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/top-level.nix:16:13:
+           15|     name = "devenv-profile";
+           16|     paths = lib.flatten (builtins.map drvOrPackageToPaths config.packages);
+             |             ^
+           17|     ignoreCollisions = true;
+
+       … while calling 'flatten'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/lists.nix:439:13:
+          438|   */
+          439|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
+             |             ^
+          440|
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/lists.nix:439:16:
+          438|   */
+          439|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
+             |                ^
+          440|
+
+       … while calling the 'isList' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/lists.nix:439:19:
+          438|   */
+          439|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
+             |                   ^
+          440|
+
+       … while calling the 'map' builtin
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/top-level.nix:16:26:
+           15|     name = "devenv-profile";
+           16|     paths = lib.flatten (builtins.map drvOrPackageToPaths config.packages);
+             |                          ^
+           17|     ignoreCollisions = true;
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/top-level.nix:16:59:
+           15|     name = "devenv-profile";
+           16|     paths = lib.flatten (builtins.map drvOrPackageToPaths config.packages);
+             |                                                           ^
+           17|     ignoreCollisions = true;
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `packages':
+
+       … while evaluating the attribute 'mergedValue'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1192:5:
+         1191|     # Type-check the remaining definitions, and merge them. Or throw if no definitions.
+         1192|     mergedValue =
+             |     ^
+         1193|       if isDefined then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1197:11:
+         1196|           # .headError is either not-present, null, or a string describing the error
+         1197|           if checkedAndMerged.headError or null != null then
+             |           ^
+         1198|             throw "A definition for option `${showOption loc}' is not of type `${type.description}'. TypeError: ${checkedAndMerged.headError.message}"
+
+       … while evaluating the attribute 'headError'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:769:13:
+          768|           {
+          769|             headError = checkDefsForError check loc defs;
+             |             ^
+          770|             value = map (x: x.optionalValue.value or x.mergedValue) evals;
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:769:25:
+          768|           {
+          769|             headError = checkDefsForError check loc defs;
+             |                         ^
+          770|             value = map (x: x.optionalValue.value or x.mergedValue) evals;
+
+       … while calling 'checkDefsForError'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:109:17:
+          108|   checkDefsForError =
+          109|     check: loc: defs:
+             |                 ^
+          110|     let
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:113:5:
+          112|     in
+          113|     if invalidDefs != [ ] then { message = "Definition values: ${showDefs invalidDefs}"; } else null;
+             |     ^
+          114|
+
+       … while calling the 'filter' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:111:21:
+          110|     let
+          111|       invalidDefs = filter (def: !check def.value) defs;
+             |                     ^
+          112|     in
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:111:29:
+          110|     let
+          111|       invalidDefs = filter (def: !check def.value) defs;
+             |                             ^
+          112|     in
+
+       … in the argument of the not operator
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:111:35:
+          110|     let
+          111|       invalidDefs = filter (def: !check def.value) defs;
+             |                                   ^
+          112|     in
+
+       … while calling a functor (an attribute set with a '__functor' attribute)
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:111:35:
+          110|     let
+          111|       invalidDefs = filter (def: !check def.value) defs;
+             |                                   ^
+          112|     in
+
+       … while calling the 'isList' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:741:9:
+          740|       check = {
+          741|         __functor = _self: isList;
+             |         ^
+          742|         isV2MergeCoherent = true;
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1383:13:
+         1382|           // {
+         1383|             value = def.value.content;
+             |             ^
+         1384|             inherit (def.value) priority;
+
+       … while evaluating the attribute 'value.content'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1504:22:
+         1503|     _type = "order";
+         1504|     inherit priority content;
+             |                      ^
+         1505|   };
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/integrations/git-hooks.nix:121:50:
+          120|       # Add the packages for any enabled hooks at the end to avoid overriding the language-defined packages.
+          121|       packages = lib.mkAfter ([ packageBin ] ++ (cfg.enabledPackages or [ ]));
+             |                                                  ^
+          122|       env.PREK_HOME = "${config.devenv.state}/prek";
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `git-hooks.enabledPackages':
+
+       … while evaluating the attribute 'mergedValue'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1192:5:
+         1191|     # Type-check the remaining definitions, and merge them. Or throw if no definitions.
+         1192|     mergedValue =
+             |     ^
+         1193|       if isDefined then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1193:7:
+         1192|     mergedValue =
+         1193|       if isDefined then
+             |       ^
+         1194|         if type.merge ? v2 then
+
+       … while evaluating the attribute 'values'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1186:9:
+         1185|       {
+         1186|         values = defsSorted;
+             |         ^
+         1187|         inherit (defsFiltered) highestPrio;
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:11:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |           ^
+         1181|             sortProperties defsFiltered.values
+
+       … while calling the 'any' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:14:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |              ^
+         1181|             sortProperties defsFiltered.values
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:19:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |                   ^
+         1181|             sortProperties defsFiltered.values
+
+       … while evaluating the attribute 'value._type'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1357:67:
+         1356|       strip =
+         1357|         def: if def.value._type or "" == "override" then def // { value = def.value.content; } else def;
+             |                                                                   ^
+         1358|     in
+
+       … while evaluating the attribute 'value.content'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1490:22:
+         1489|     _type = "override";
+         1490|     inherit priority content;
+             |                      ^
+         1491|   };
+
+       … while evaluating the attribute 'default'
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/pre-commit.nix:210:9:
+          209|
+          210|         default = lib.pipe config.hooks [
+             |         ^
+          211|           builtins.attrValues
+
+       … while calling the 'foldl'' builtin
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/pre-commit.nix:210:19:
+          209|
+          210|         default = lib.pipe config.hooks [
+             |                   ^
+          211|           builtins.attrValues
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/trivial.nix:150:30:
+          149|   */
+          150|   pipe = builtins.foldl' (x: f: f x);
+             |                              ^
+          151|
+
+       … while calling the 'concatMap' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/trivial.nix:150:33:
+          149|   */
+          150|   pipe = builtins.foldl' (x: f: f x);
+             |                                 ^
+          151|
+
+       … while calling anonymous lambda
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/pre-commit.nix:213:32:
+          212|           (lib.filter (hook: hook.enable))
+          213|           (builtins.concatMap (hook:
+             |                                ^
+          214|             (lib.optional (hook.package != null) hook.package)
+
+       … from call site
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/pre-commit.nix:215:16:
+          214|             (lib.optional (hook.package != null) hook.package)
+          215|             ++ hook.extraPackages
+             |                ^
+          216|           ))
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `git-hooks.hooks.clippy.extraPackages':
+
+       … while evaluating the attribute 'mergedValue'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1192:5:
+         1191|     # Type-check the remaining definitions, and merge them. Or throw if no definitions.
+         1192|     mergedValue =
+             |     ^
+         1193|       if isDefined then
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:770:13:
+          769|             headError = checkDefsForError check loc defs;
+          770|             value = map (x: x.optionalValue.value or x.mergedValue) evals;
+             |             ^
+          771|             valueMeta.list = map (v: v.checkedAndMerged.valueMeta) evals;
+
+       … while calling the 'map' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:770:21:
+          769|             headError = checkDefsForError check loc defs;
+          770|             value = map (x: x.optionalValue.value or x.mergedValue) evals;
+             |                     ^
+          771|             valueMeta.list = map (v: v.checkedAndMerged.valueMeta) evals;
+
+       … while calling the 'filter' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:751:21:
+          750|           let
+          751|             evals = filter (x: x.optionalValue ? value) (
+             |                     ^
+          752|               concatLists (
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:751:29:
+          750|           let
+          751|             evals = filter (x: x.optionalValue ? value) (
+             |                             ^
+          752|               concatLists (
+
+       … while evaluating the attribute 'optionalValue'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1256:5:
+         1255|
+         1256|     optionalValue = if isDefined then { value = mergedValue; } else { };
+             |     ^
+         1257|   };
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1256:21:
+         1255|
+         1256|     optionalValue = if isDefined then { value = mergedValue; } else { };
+             |                     ^
+         1257|   };
+
+       … while evaluating the attribute 'values'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1186:9:
+         1185|       {
+         1186|         values = defsSorted;
+             |         ^
+         1187|         inherit (defsFiltered) highestPrio;
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:11:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |           ^
+         1181|             sortProperties defsFiltered.values
+
+       … while calling the 'any' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:14:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |              ^
+         1181|             sortProperties defsFiltered.values
+
+       … while evaluating the attribute 'values'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1360:7:
+         1359|     {
+         1360|       values = concatMap (def: if getPrio def == highestPrio then [ (strip def) ] else [ ]) defs;
+             |       ^
+         1361|       inherit highestPrio;
+
+       … while calling the 'concatMap' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1360:16:
+         1359|     {
+         1360|       values = concatMap (def: if getPrio def == highestPrio then [ (strip def) ] else [ ]) defs;
+             |                ^
+         1361|       inherit highestPrio;
+
+       … while calling the 'concatMap' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1160:26:
+         1159|         # Process mkMerge and mkIf properties.
+         1160|         defsNormalized = concatMap (
+             |                          ^
+         1161|           m:
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1161:11:
+         1160|         defsNormalized = concatMap (
+         1161|           m:
+             |           ^
+         1162|           map (
+
+       … while calling the 'map' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1162:11:
+         1161|           m:
+         1162|           map (
+             |           ^
+         1163|             value:
+
+       … while evaluating definitions from `/nix/store/c9ay09ivjf7i8fyqc7kx92y1rkn2inbl-source/modules/hooks.nix':
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1171:80:
+         1170|               }
+         1171|           ) (addErrorContext "while evaluating definitions from `${m.file}':" (dischargeProperties m.value))
+             |                                                                                ^
+         1172|         ) defs;
+
+       … while calling 'dischargeProperties'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1311:5:
+         1310|   dischargeProperties =
+         1311|     def:
+             |     ^
+         1312|     if def._type or "" == "merge" then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1312:5:
+         1311|     def:
+         1312|     if def._type or "" == "merge" then
+             |     ^
+         1313|       concatMap dischargeProperties def.contents
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:760:25:
+          759|                         inherit (def) file;
+          760|                         value = def';
+             |                         ^
+          761|                       }
+
+       … while calling the 'elemAt' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/lists.nix:347:43:
+          346|   */
+          347|   imap1 = f: list: genList (n: f (n + 1) (elemAt list n)) (length list);
+             |                                           ^
+          348|
+
+       … from call site
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/hooks.nix:285:15:
+          284|             config.extraPackages = [
+          285|               config.packageOverrides.cargo
+             |               ^
+          286|               config.packageOverrides.clippy
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `git-hooks.hooks.clippy.packageOverrides.cargo':
+
+       (8 duplicate frames omitted)
+
+       … from call site
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/hooks.nix:2580:40:
+         2579|           package = wrapper;
+         2580|           packageOverrides = { cargo = tools.cargo; clippy = tools.clippy; };
+             |                                        ^
+         2581|           entry = "${hooks.clippy.package}/bin/cargo-clippy clippy ${cargoManifestPathArg} ${lib.optionalString hooks.clippy.settings.offline "--offline"} ${lib.optionalString hooks.clippy.settings.allFeatures "--all-features"} ${hooks.clippy.settings.extraArgs} -- ${lib.optionalString hooks.clippy.settings.denyWarnings "-D warnings"}";
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:880:18:
+          879|             value = mapAttrs (
+          880|               n: v:
+             |                  ^
+          881|               if lazy then
+
+       … while evaluating the attribute 'optionalValue.value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1256:5:
+         1255|
+         1256|     optionalValue = if isDefined then { value = mergedValue; } else { };
+             |     ^
+         1257|   };
+
+       (9 duplicate frames omitted)
+
+       … while evaluating definitions from `/nix/store/yjg2q07d9h6nxpa9iahnc945l10vx290-source/src/modules/languages/rust.nix':
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1171:80:
+         1170|               }
+         1171|           ) (addErrorContext "while evaluating definitions from `${m.file}':" (dischargeProperties m.value))
+             |                                                                                ^
+         1172|         ) defs;
+
+       … while calling 'dischargeProperties'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1311:5:
+         1310|   dischargeProperties =
+         1311|     def:
+             |     ^
+         1312|     if def._type or "" == "merge" then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1312:5:
+         1311|     def:
+         1312|     if def._type or "" == "merge" then
+             |     ^
+         1313|       concatMap dischargeProperties def.contents
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:820:11:
+          819|           inherit (def) file;
+          820|           value = v;
+             |           ^
+          821|         }) def.value
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/languages/rust.nix:277:19:
+          276|         git-hooks.tools = {
+          277|           cargo = config.lib.mkOverrideDefault cfg.toolchainPackage;
+             |                   ^
+          278|           rustfmt = config.lib.mkOverrideDefault cfg.toolchainPackage;
+
+       … while calling 'lambda'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:378:26:
+          377|             lambda =
+          378|               loc: defs: arg:
+             |                          ^
+          379|               anything.merge (loc ++ [ "<function body>" ]) (
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:379:15:
+          378|               loc: defs: arg:
+          379|               anything.merge (loc ++ [ "<function body>" ]) (
+             |               ^
+          380|                 map (def: {
+
+       … while calling 'merge'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:356:12:
+          355|     merge =
+          356|       loc: defs:
+             |            ^
+          357|       let
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:389:7:
+          388|       in
+          389|       mergeFunction loc defs;
+             |       ^
+          390|   };
+
+       … while calling '__functor'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:862:22:
+          861|         __functor =
+          862|           self: loc: defs:
+             |                      ^
+          863|           (self.v2 { inherit loc defs; }).value;
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:879:13:
+          878|             headError = checkDefsForError check loc defs;
+          879|             value = mapAttrs (
+             |             ^
+          880|               n: v:
+
+       … while calling the 'mapAttrs' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:879:21:
+          878|             headError = checkDefsForError check loc defs;
+          879|             value = mapAttrs (
+             |                     ^
+          880|               n: v:
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:873:17:
+          872|                 # Meaning it is less lazy
+          873|                 filterAttrs (n: v: v.optionalValue ? value) (
+             |                 ^
+          874|                   zipAttrsWith (name: defs: mergeDefinitions (loc ++ [ name ]) elemType defs) (pushPositions defs)
+
+       … while calling 'filterAttrs'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:23:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                       ^
+          664|
+
+       … while calling the 'removeAttrs' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:28:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                            ^
+          664|
+
+       … while calling the 'filter' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:45:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                                             ^
+          664|
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:53:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                                                     ^
+          664|
+
+       … in the argument of the not operator
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:60:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                                                            ^
+          664|
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:60:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                                                            ^
+          664|
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:873:33:
+          872|                 # Meaning it is less lazy
+          873|                 filterAttrs (n: v: v.optionalValue ? value) (
+             |                                 ^
+          874|                   zipAttrsWith (name: defs: mergeDefinitions (loc ++ [ name ]) elemType defs) (pushPositions defs)
+
+       (10 duplicate frames omitted)
+
+       … while evaluating definitions from `/nix/store/yjg2q07d9h6nxpa9iahnc945l10vx290-source/src/modules/lib.nix':
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1171:80:
+         1170|               }
+         1171|           ) (addErrorContext "while evaluating definitions from `${m.file}':" (dischargeProperties m.value))
+             |                                                                                ^
+         1172|         ) defs;
+
+       … while calling 'dischargeProperties'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1311:5:
+         1310|   dischargeProperties =
+         1311|     def:
+             |     ^
+         1312|     if def._type or "" == "merge" then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1312:5:
+         1311|     def:
+         1312|     if def._type or "" == "merge" then
+             |     ^
+         1313|       concatMap dischargeProperties def.contents
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:820:11:
+          819|           inherit (def) file;
+          820|           value = v;
+             |           ^
+          821|         }) def.value
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/languages/rust.nix:277:48:
+          276|         git-hooks.tools = {
+          277|           cargo = config.lib.mkOverrideDefault cfg.toolchainPackage;
+             |                                                ^
+          278|           rustfmt = config.lib.mkOverrideDefault cfg.toolchainPackage;
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `languages.rust.toolchainPackage':
+
+       (8 duplicate frames omitted)
+
+       … while calling the 'import' builtin
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/languages/rust.nix:315:24:
+          314|         # This symlinkJoins and patches the individual components.
+          315|         mkAggregated = import (rust-overlay + "/lib/mk-aggregated.nix") {
+             |                        ^
+          316|           inherit (pkgs) lib stdenv symlinkJoin bash curl;
+
+       … while realising the context of a path
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/languages/rust.nix:8:18:
+            7|
+            8|   rust-overlay = config.lib.getInput {
+             |                  ^
+            9|     name = "rust-overlay";
+
+       … while calling 'lambda'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:378:26:
+          377|             lambda =
+          378|               loc: defs: arg:
+             |                          ^
+          379|               anything.merge (loc ++ [ "<function body>" ]) (
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:379:15:
+          378|               loc: defs: arg:
+          379|               anything.merge (loc ++ [ "<function body>" ]) (
+             |               ^
+          380|                 map (def: {
+
+       … while calling 'merge'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:356:12:
+          355|     merge =
+          356|       loc: defs:
+             |            ^
+          357|       let
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:363:22:
+          362|         # don't have the same type
+          363|         commonType = foldl' (
+             |                      ^
+          364|           type: def:
+
+       … while calling 'foldl''
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/lists.nix:279:9:
+          278|   foldl' =
+          279|     op: acc:
+             |         ^
+          280|     # The builtin `foldl'` is a bit lazier than one might expect.
+
+       … while calling the 'seq' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/lists.nix:283:5:
+          282|     # In particular, the initial accumulator value is not forced before the first iteration starts.
+          283|     builtins.seq acc (builtins.foldl' op acc);
+             |     ^
+          284|
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:369:12:
+          368|             throw "The option `${showOption loc}' has conflicting option types in ${showFiles (getFiles defs)}"
+          369|         ) (getType (head defs).value) defs;
+             |            ^
+          370|
+
+       … while calling 'getType'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:359:11:
+          358|         getType =
+          359|           value: if isAttrs value && isStringLike value then "stringCoercibleSet" else builtins.typeOf value;
+             |           ^
+          360|
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:359:18:
+          358|         getType =
+          359|           value: if isAttrs value && isStringLike value then "stringCoercibleSet" else builtins.typeOf value;
+             |                  ^
+          360|
+
+       … in the left operand of the AND (&&) operator
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:359:35:
+          358|         getType =
+          359|           value: if isAttrs value && isStringLike value then "stringCoercibleSet" else builtins.typeOf value;
+             |                                   ^
+          360|
+
+       … while calling the 'isAttrs' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:359:21:
+          358|         getType =
+          359|           value: if isAttrs value && isStringLike value then "stringCoercibleSet" else builtins.typeOf value;
+             |                     ^
+          360|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:382:19:
+          381|                   file = def.file;
+          382|                   value = def.value arg;
+             |                   ^
+          383|                 }) defs
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:382:27:
+          381|                   file = def.file;
+          382|                   value = def.value arg;
+             |                           ^
+          383|                 }) defs
+
+       … while calling 'getInput'
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/lib.nix:48:16:
+           47|
+           48|     getInput = args:
+             |                ^
+           49|       inputs.${args.name} or (throw "${config.lib._mkInputError args}\n\n");
+
+       … while calling the 'throw' builtin
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/lib.nix:49:31:
+           48|     getInput = args:
+           49|       inputs.${args.name} or (throw "${config.lib._mkInputError args}\n\n");
+             |                               ^
+           50|
+
+       error:
+       error: To use 'languages.rust.channel', run the following command:
+
+         $ devenv inputs add rust-overlay github:oxalica/rust-overlay --follows nixpkgs
+✖ Building shell in 2.96s
+Error:   × Command `/nix/store/9jvwcrgk8akzzbvw6irh075aypzr8zbc-devenv-nix-2.30.4/bin/nix --show-trace --extra-experimental-features nix-command --extra-experimental-features flakes --option lazy-trees
+  │ true --option warn-dirty false --keep-going --max-jobs 6 --option eval-cache false --option always-allow-substitutes true --option http-connections 100 --option extra-substituters https://
+  │ devenv.cachix.org --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= print-dev-env --profile /home/whit/projects/deduplifier/.devenv/gc/shell
+  │ -vv --log-format internal-json` failed with exit code 1
+
+direnv: failed to build the devenv environment. devenv.nix may contain errors. see above.
+direnv: export +DEVENV_CMDLINE +DEVENV_DIRENVRC_ROLLING_UPGRADE +DEVENV_DIRENVRC_VERSION
+
+❯                                                                                                                                                                                  deduplifier  main !
+
+❯                                                                                                                                                                                  deduplifier  main !
+
+❯                                                                                                                                                                                  deduplifier  main !
+
+❯ 
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "dedb4f38-e0d0-44d5-aa66-a4f575ac51d1",
+  "terminalCommandId": "tool-8562cf07-2adc-4c5b-9b38-e56e97617074",
+  "commandLine": {
+    "original": "cd /home/whit/projects/deduplifier &amp;&amp; devenv inputs add rust-overlay github:oxalica/rust-overlay --follows nixpkgs",
+    "toolEdited": "devenv inputs add rust-overlay github:oxalica/rust-overlay --follows nixpkgs"
+  },
+  "language": "sh"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 4
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_multiReplaceString">
+<details>
+<summary>Tool use: **copilot_multiReplaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_multiReplaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Multi-Replace String in Files\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;nix\n    # additional tools\n    bacon            # background code checker\n    rust-analyzer    # LSP server (devenv includes this but explicit is good)\n  ];\n  languages.rust = {\n    enable = true;\n    # using stable channel by default, can override per-project\n    # channel = \"stable\"; # requires rust-overlay input\n  };\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    # additional tools\n    bacon            # background code checker\n    rust-analyzer    # LSP server (devenv includes this but explicit is good)\n  ];  languages.rust = {\n    enable = true;\n    # using stable channel by default, can override per-project\n    # channel = \"stable\"; # requires rust-overlay input\n  };",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_createFile">
+<details>
+<summary>Tool use: **copilot_createFile**</summary>
+
+
+Parameters:
+
+```json
+{
+  "file_path": "/home/whit/projects/deduplifier/.cargo/config.toml",
+  "relativeWorkspacePath": "config.toml"
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_createFile",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Creating [](file:///home/whit/projects/deduplifier/.cargo/config.toml)",
+  "pastTenseMessage": "Created [](file:///home/whit/projects/deduplifier/.cargo/config.toml)",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "",
+  "textEditContent": "[target.x86_64-pc-windows-gnu]\nlinker = \"x86_64-w64-mingw32-gcc\"\n",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="run_in_terminal">
+<details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+
+Parameters:
+
+```json
+{
+  "kind": "terminal",
+  "terminalToolSessionId": "73392a52-e4a5-4a1f-b950-eda2832b5008",
+  "terminalCommandId": "tool-afee08a4-7b76-49de-a413-46b4e3b55873",
+  "commandLine": {
+    "original": "which x86_64-w64-mingw32-gcc 2&gt;/dev/null || echo \"not found\""
+  },
+  "language": "sh",
+  "autoApproveInfo": {
+    "value": "Auto approved by rules [&#96;which&#96;](command:_chat.openTerminalSettingsLink?%255B7%255D \"View rule in settings\"), [&#96;echo&#96;](command:_chat.openTerminalSettingsLink?%255B7%255D \"View rule in settings\")",
+    "isTrusted": {
+      "enabledCommands": [
+        "_chat.openTerminalSettingsLink"
+      ]
+    },
+    "supportThemeIcons": false,
+    "supportHtml": false,
+    "supportAlertSyntax": false
+  }
+}
+```
+Additional data:
+
+```json
+{
+  "vscodeToolId": "run_in_terminal",
+  "isHidden": false
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Run in Terminal\"",
+  "isConfirmed": {
+    "type": 0
+  },
+  "content": "",
+  "textEditContent": "",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+The error is clear at the bottom:
+
+"To use 'languages.rust.channel', run the following command:
+  $ devenv inputs add rust-overlay github:oxalica/rust-overlay --follows nixpkgs"
+
+Let me run that command, and also revert the channel change since it requires rust-overlay.The error tells you exactly what to do — `channel` requires the `rust-overlay` input. Run: The key error buried at the bottom is a version mismatch between your devenv and the pinned rust-overlay:
+
+> `function 'anonymous lambda' called without required argument 'pkgsHostHost'`
+
+This is a known incompatibility between devenv's pinned version of rust-overlay and newer nixpkgs. The simplest fix is to revert the whole cross-compilation approach in `devenv.nix` — it's causing too much friction. Instead, use a `cargo/config.toml` linker override which doesn't touch devenv at all: Now set up cross-compilation properly outside devenv — just a linker config and a system package: Now install MinGW at the system level and add the Rust target through NixOS config (not devenv), or just install it one-time: 
+
+---
+
+_**User (2026-04-29 22:14Z)**_
+
+this doesn't seem right--the whole point of devenv is to isolate my project dependencies from my nixos build and keep them portable to other systems.  i feel like instaling mingw32-gcc into my nixos build isn't the right answer
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;nix\n  languages.rust = {\n    enable = true;\n    channel = \"stable\";\n    targets = [ \"x86_64-pc-windows-gnu\" ];\n  };\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "  languages.rust = {\n    enable = true;\n    channel = \"stable\";\n    targets = [ \"x86_64-pc-windows-gnu\" ];\n  };",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_replaceString">
+<details>
+<summary>Tool use: **copilot_replaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_replaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Replace String in File\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;nix\n    # additional tools\n    bacon            # background code checker\n    rust-analyzer    # LSP server (devenv includes this but explicit is good)\n\n    # cross-compilation to Windows\n    pkgsCross.mingwW64.stdenv.cc  # MinGW-w64 linker/compiler for Windows targets\n  ];\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    # additional tools\n    bacon            # background code checker\n    rust-analyzer    # LSP server (devenv includes this but explicit is good)\n\n    # cross-compilation to Windows\n    pkgsCross.mingwW64.stdenv.cc  # MinGW-w64 linker/compiler for Windows targets\n  ];",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+The user is right. The proper approach is to keep everything in devenv.nix. The problem was a version mismatch with rust-overlay. Since `devenv inputs add` succeeded, the input is now registered. Let me restore the channel and targets approach and see if it works now.You're right. The `devenv inputs add` succeeded, so rust-overlay is now registered — let's try the `channel` + `targets` approach again now that the input exists: Also add `mingw-w64` back to packages — but the right way, scoped so it doesn't conflict: Now try `direnv reload`. The `pkgsHostHost` error from before was caused by the rust-overlay version mismatch — now that the input is properly registered via `devenv inputs add`, that conflict should be resolved. If `pkgsCross.mingwW64.stdenv.cc` still errors, the fallback is `mingw-w64` (the standalone wrapper package) — just let me know what the error says.
+
+---
+
+_**User (2026-04-29 22:15Z)**_
+
+do i need to run the devenv inputs add command in my fish shell?
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+The user is asking whether they need to run `devenv inputs add` in their fish shell specifically. The last command was run in bash (the terminal), and it succeeded (exit code 0). So the command already ran successfully. The question is probably whether the shell matters.No — the command already ran successfully (exit code 0). Shell doesn't matter for `devenv inputs add`; it just modifies `devenv.yaml` and the lock file on disk. Try `direnv reload` now.
+
+---
+
+_**User (2026-04-29 22:17Z)**_
+
+❯ direnv reload                                                                                                                                                                   deduplifier  main !?
+direnv: loading ~/projects/deduplifier/.envrc
+direnv: using devenv
+• Using Cachix caches: devenv
+error:
+       … while calling the 'derivationStrict' builtin
+         at <nix/derivation-internal.nix>:37:12:
+           36|
+           37|   strict = derivationStrict drvAttrs;
+             |            ^
+           38|
+
+       … while evaluating derivation 'devenv-shell'
+         whose name attribute is located at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/stdenv/generic/make-derivation.nix:536:13
+
+       … while evaluating attribute 'DEVENV_PROFILE' of derivation 'devenv-shell'
+
+       … while calling the 'getAttr' builtin
+         at <nix/derivation-internal.nix>:50:17:
+           49|     value = commonAttrs // {
+           50|       outPath = builtins.getAttr outputName strict;
+             |                 ^
+           51|       drvPath = strict.drvPath;
+
+       … while calling the 'derivationStrict' builtin
+         at <nix/derivation-internal.nix>:37:12:
+           36|
+           37|   strict = derivationStrict drvAttrs;
+             |            ^
+           38|
+
+       … while evaluating derivation 'devenv-profile'
+         whose name attribute is located at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/stdenv/generic/make-derivation.nix:536:13
+
+       … while evaluating attribute 'passAsFile' of derivation 'devenv-profile'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/trivial-builders/default.nix:81:9:
+           80|         inherit buildCommand name;
+           81|         passAsFile = [ "buildCommand" ] ++ (derivationArgs.passAsFile or [ ]);
+             |         ^
+           82|       }
+
+       … while evaluating the attribute 'passAsFile'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:116:9:
+          115|         # XXX: The size is somewhat arbitrary
+          116|         passAsFile = if builtins.stringLength pkgs >= 128 * 1024 then [ "pkgs" ] else [ ];
+             |         ^
+          117|       }
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:116:22:
+          115|         # XXX: The size is somewhat arbitrary
+          116|         passAsFile = if builtins.stringLength pkgs >= 128 * 1024 then [ "pkgs" ] else [ ];
+             |                      ^
+          117|       }
+
+       … in the argument of the not operator
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:116:52:
+          115|         # XXX: The size is somewhat arbitrary
+          116|         passAsFile = if builtins.stringLength pkgs >= 128 * 1024 then [ "pkgs" ] else [ ];
+             |                                                    ^
+          117|       }
+
+       … while calling the 'lessThan' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:116:52:
+          115|         # XXX: The size is somewhat arbitrary
+          116|         passAsFile = if builtins.stringLength pkgs >= 128 * 1024 then [ "pkgs" ] else [ ];
+             |                                                    ^
+          117|       }
+
+       … while calling the 'stringLength' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:116:25:
+          115|         # XXX: The size is somewhat arbitrary
+          116|         passAsFile = if builtins.stringLength pkgs >= 128 * 1024 then [ "pkgs" ] else [ ];
+             |                         ^
+          117|       }
+
+       … while calling the 'toJSON' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:111:16:
+          110|         pathsToLinkJSON = builtins.toJSON pathsToLink;
+          111|         pkgs = builtins.toJSON chosenOutputs;
+             |                ^
+          112|         extraPathsFrom = lib.optional includeClosures (writeClosure pathsForClosure);
+
+       … while calling the 'map' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/pkgs/build-support/buildenv/default.nix:69:21:
+           68|   let
+           69|     chosenOutputs = map (drv: {
+             |                     ^
+           70|       paths =
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/top-level.nix:16:13:
+           15|     name = "devenv-profile";
+           16|     paths = lib.flatten (builtins.map drvOrPackageToPaths config.packages);
+             |             ^
+           17|     ignoreCollisions = true;
+
+       … while calling 'flatten'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/lists.nix:439:13:
+          438|   */
+          439|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
+             |             ^
+          440|
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/lists.nix:439:16:
+          438|   */
+          439|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
+             |                ^
+          440|
+
+       … while calling the 'isList' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/lists.nix:439:19:
+          438|   */
+          439|   flatten = x: if isList x then concatMap (y: flatten y) x else [ x ];
+             |                   ^
+          440|
+
+       … while calling the 'map' builtin
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/top-level.nix:16:26:
+           15|     name = "devenv-profile";
+           16|     paths = lib.flatten (builtins.map drvOrPackageToPaths config.packages);
+             |                          ^
+           17|     ignoreCollisions = true;
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/top-level.nix:16:59:
+           15|     name = "devenv-profile";
+           16|     paths = lib.flatten (builtins.map drvOrPackageToPaths config.packages);
+             |                                                           ^
+           17|     ignoreCollisions = true;
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `packages':
+
+       … while evaluating the attribute 'mergedValue'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1192:5:
+         1191|     # Type-check the remaining definitions, and merge them. Or throw if no definitions.
+         1192|     mergedValue =
+             |     ^
+         1193|       if isDefined then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1197:11:
+         1196|           # .headError is either not-present, null, or a string describing the error
+         1197|           if checkedAndMerged.headError or null != null then
+             |           ^
+         1198|             throw "A definition for option `${showOption loc}' is not of type `${type.description}'. TypeError: ${checkedAndMerged.headError.message}"
+
+       … while evaluating the attribute 'headError'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:769:13:
+          768|           {
+          769|             headError = checkDefsForError check loc defs;
+             |             ^
+          770|             value = map (x: x.optionalValue.value or x.mergedValue) evals;
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:769:25:
+          768|           {
+          769|             headError = checkDefsForError check loc defs;
+             |                         ^
+          770|             value = map (x: x.optionalValue.value or x.mergedValue) evals;
+
+       … while calling 'checkDefsForError'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:109:17:
+          108|   checkDefsForError =
+          109|     check: loc: defs:
+             |                 ^
+          110|     let
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:113:5:
+          112|     in
+          113|     if invalidDefs != [ ] then { message = "Definition values: ${showDefs invalidDefs}"; } else null;
+             |     ^
+          114|
+
+       … while calling the 'filter' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:111:21:
+          110|     let
+          111|       invalidDefs = filter (def: !check def.value) defs;
+             |                     ^
+          112|     in
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:111:29:
+          110|     let
+          111|       invalidDefs = filter (def: !check def.value) defs;
+             |                             ^
+          112|     in
+
+       … in the argument of the not operator
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:111:35:
+          110|     let
+          111|       invalidDefs = filter (def: !check def.value) defs;
+             |                                   ^
+          112|     in
+
+       … while calling a functor (an attribute set with a '__functor' attribute)
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:111:35:
+          110|     let
+          111|       invalidDefs = filter (def: !check def.value) defs;
+             |                                   ^
+          112|     in
+
+       … while calling the 'isList' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:741:9:
+          740|       check = {
+          741|         __functor = _self: isList;
+             |         ^
+          742|         isV2MergeCoherent = true;
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1383:13:
+         1382|           // {
+         1383|             value = def.value.content;
+             |             ^
+         1384|             inherit (def.value) priority;
+
+       … while evaluating the attribute 'value.content'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1504:22:
+         1503|     _type = "order";
+         1504|     inherit priority content;
+             |                      ^
+         1505|   };
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/integrations/git-hooks.nix:121:50:
+          120|       # Add the packages for any enabled hooks at the end to avoid overriding the language-defined packages.
+          121|       packages = lib.mkAfter ([ packageBin ] ++ (cfg.enabledPackages or [ ]));
+             |                                                  ^
+          122|       env.PREK_HOME = "${config.devenv.state}/prek";
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `git-hooks.enabledPackages':
+
+       … while evaluating the attribute 'mergedValue'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1192:5:
+         1191|     # Type-check the remaining definitions, and merge them. Or throw if no definitions.
+         1192|     mergedValue =
+             |     ^
+         1193|       if isDefined then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1193:7:
+         1192|     mergedValue =
+         1193|       if isDefined then
+             |       ^
+         1194|         if type.merge ? v2 then
+
+       … while evaluating the attribute 'values'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1186:9:
+         1185|       {
+         1186|         values = defsSorted;
+             |         ^
+         1187|         inherit (defsFiltered) highestPrio;
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:11:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |           ^
+         1181|             sortProperties defsFiltered.values
+
+       … while calling the 'any' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:14:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |              ^
+         1181|             sortProperties defsFiltered.values
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:19:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |                   ^
+         1181|             sortProperties defsFiltered.values
+
+       … while evaluating the attribute 'value._type'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1357:67:
+         1356|       strip =
+         1357|         def: if def.value._type or "" == "override" then def // { value = def.value.content; } else def;
+             |                                                                   ^
+         1358|     in
+
+       … while evaluating the attribute 'value.content'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1490:22:
+         1489|     _type = "override";
+         1490|     inherit priority content;
+             |                      ^
+         1491|   };
+
+       … while evaluating the attribute 'default'
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/pre-commit.nix:210:9:
+          209|
+          210|         default = lib.pipe config.hooks [
+             |         ^
+          211|           builtins.attrValues
+
+       … while calling the 'foldl'' builtin
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/pre-commit.nix:210:19:
+          209|
+          210|         default = lib.pipe config.hooks [
+             |                   ^
+          211|           builtins.attrValues
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/trivial.nix:150:30:
+          149|   */
+          150|   pipe = builtins.foldl' (x: f: f x);
+             |                              ^
+          151|
+
+       … while calling the 'concatMap' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/trivial.nix:150:33:
+          149|   */
+          150|   pipe = builtins.foldl' (x: f: f x);
+             |                                 ^
+          151|
+
+       … while calling anonymous lambda
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/pre-commit.nix:213:32:
+          212|           (lib.filter (hook: hook.enable))
+          213|           (builtins.concatMap (hook:
+             |                                ^
+          214|             (lib.optional (hook.package != null) hook.package)
+
+       … from call site
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/pre-commit.nix:215:16:
+          214|             (lib.optional (hook.package != null) hook.package)
+          215|             ++ hook.extraPackages
+             |                ^
+          216|           ))
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `git-hooks.hooks.clippy.extraPackages':
+
+       … while evaluating the attribute 'mergedValue'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1192:5:
+         1191|     # Type-check the remaining definitions, and merge them. Or throw if no definitions.
+         1192|     mergedValue =
+             |     ^
+         1193|       if isDefined then
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:770:13:
+          769|             headError = checkDefsForError check loc defs;
+          770|             value = map (x: x.optionalValue.value or x.mergedValue) evals;
+             |             ^
+          771|             valueMeta.list = map (v: v.checkedAndMerged.valueMeta) evals;
+
+       … while calling the 'map' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:770:21:
+          769|             headError = checkDefsForError check loc defs;
+          770|             value = map (x: x.optionalValue.value or x.mergedValue) evals;
+             |                     ^
+          771|             valueMeta.list = map (v: v.checkedAndMerged.valueMeta) evals;
+
+       … while calling the 'filter' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:751:21:
+          750|           let
+          751|             evals = filter (x: x.optionalValue ? value) (
+             |                     ^
+          752|               concatLists (
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:751:29:
+          750|           let
+          751|             evals = filter (x: x.optionalValue ? value) (
+             |                             ^
+          752|               concatLists (
+
+       … while evaluating the attribute 'optionalValue'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1256:5:
+         1255|
+         1256|     optionalValue = if isDefined then { value = mergedValue; } else { };
+             |     ^
+         1257|   };
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1256:21:
+         1255|
+         1256|     optionalValue = if isDefined then { value = mergedValue; } else { };
+             |                     ^
+         1257|   };
+
+       … while evaluating the attribute 'values'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1186:9:
+         1185|       {
+         1186|         values = defsSorted;
+             |         ^
+         1187|         inherit (defsFiltered) highestPrio;
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:11:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |           ^
+         1181|             sortProperties defsFiltered.values
+
+       … while calling the 'any' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1180:14:
+         1179|           # Avoid sorting if we don't have to.
+         1180|           if any (def: def.value._type or "" == "order") defsFiltered.values then
+             |              ^
+         1181|             sortProperties defsFiltered.values
+
+       … while evaluating the attribute 'values'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1360:7:
+         1359|     {
+         1360|       values = concatMap (def: if getPrio def == highestPrio then [ (strip def) ] else [ ]) defs;
+             |       ^
+         1361|       inherit highestPrio;
+
+       … while calling the 'concatMap' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1360:16:
+         1359|     {
+         1360|       values = concatMap (def: if getPrio def == highestPrio then [ (strip def) ] else [ ]) defs;
+             |                ^
+         1361|       inherit highestPrio;
+
+       … while calling the 'concatMap' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1160:26:
+         1159|         # Process mkMerge and mkIf properties.
+         1160|         defsNormalized = concatMap (
+             |                          ^
+         1161|           m:
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1161:11:
+         1160|         defsNormalized = concatMap (
+         1161|           m:
+             |           ^
+         1162|           map (
+
+       … while calling the 'map' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1162:11:
+         1161|           m:
+         1162|           map (
+             |           ^
+         1163|             value:
+
+       … while evaluating definitions from `/nix/store/fxbrjsnsvfa5arsza071bmzlqrvqf4mp-source/modules/hooks.nix':
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1171:80:
+         1170|               }
+         1171|           ) (addErrorContext "while evaluating definitions from `${m.file}':" (dischargeProperties m.value))
+             |                                                                                ^
+         1172|         ) defs;
+
+       … while calling 'dischargeProperties'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1311:5:
+         1310|   dischargeProperties =
+         1311|     def:
+             |     ^
+         1312|     if def._type or "" == "merge" then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1312:5:
+         1311|     def:
+         1312|     if def._type or "" == "merge" then
+             |     ^
+         1313|       concatMap dischargeProperties def.contents
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:760:25:
+          759|                         inherit (def) file;
+          760|                         value = def';
+             |                         ^
+          761|                       }
+
+       … while calling the 'elemAt' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/lists.nix:347:43:
+          346|   */
+          347|   imap1 = f: list: genList (n: f (n + 1) (elemAt list n)) (length list);
+             |                                           ^
+          348|
+
+       … from call site
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/hooks.nix:285:15:
+          284|             config.extraPackages = [
+          285|               config.packageOverrides.cargo
+             |               ^
+          286|               config.packageOverrides.clippy
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `git-hooks.hooks.clippy.packageOverrides.cargo':
+
+       (8 duplicate frames omitted)
+
+       … from call site
+         at «github:cachix/git-hooks.nix/5eaaedde414f6eb1aea8b8525c466dc37bba95ae»/modules/hooks.nix:2580:40:
+         2579|           package = wrapper;
+         2580|           packageOverrides = { cargo = tools.cargo; clippy = tools.clippy; };
+             |                                        ^
+         2581|           entry = "${hooks.clippy.package}/bin/cargo-clippy clippy ${cargoManifestPathArg} ${lib.optionalString hooks.clippy.settings.offline "--offline"} ${lib.optionalString hooks.clippy.settings.allFeatures "--all-features"} ${hooks.clippy.settings.extraArgs} -- ${lib.optionalString hooks.clippy.settings.denyWarnings "-D warnings"}";
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:880:18:
+          879|             value = mapAttrs (
+          880|               n: v:
+             |                  ^
+          881|               if lazy then
+
+       … while evaluating the attribute 'optionalValue.value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1256:5:
+         1255|
+         1256|     optionalValue = if isDefined then { value = mergedValue; } else { };
+             |     ^
+         1257|   };
+
+       (9 duplicate frames omitted)
+
+       … while evaluating definitions from `/nix/store/qnbx4l3lrz617djzprwwvi3ss3sfn00q-source/src/modules/languages/rust.nix':
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1171:80:
+         1170|               }
+         1171|           ) (addErrorContext "while evaluating definitions from `${m.file}':" (dischargeProperties m.value))
+             |                                                                                ^
+         1172|         ) defs;
+
+       … while calling 'dischargeProperties'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1311:5:
+         1310|   dischargeProperties =
+         1311|     def:
+             |     ^
+         1312|     if def._type or "" == "merge" then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1312:5:
+         1311|     def:
+         1312|     if def._type or "" == "merge" then
+             |     ^
+         1313|       concatMap dischargeProperties def.contents
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:820:11:
+          819|           inherit (def) file;
+          820|           value = v;
+             |           ^
+          821|         }) def.value
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/languages/rust.nix:277:19:
+          276|         git-hooks.tools = {
+          277|           cargo = config.lib.mkOverrideDefault cfg.toolchainPackage;
+             |                   ^
+          278|           rustfmt = config.lib.mkOverrideDefault cfg.toolchainPackage;
+
+       … while calling 'lambda'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:378:26:
+          377|             lambda =
+          378|               loc: defs: arg:
+             |                          ^
+          379|               anything.merge (loc ++ [ "<function body>" ]) (
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:379:15:
+          378|               loc: defs: arg:
+          379|               anything.merge (loc ++ [ "<function body>" ]) (
+             |               ^
+          380|                 map (def: {
+
+       … while calling 'merge'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:356:12:
+          355|     merge =
+          356|       loc: defs:
+             |            ^
+          357|       let
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:389:7:
+          388|       in
+          389|       mergeFunction loc defs;
+             |       ^
+          390|   };
+
+       … while calling '__functor'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:862:22:
+          861|         __functor =
+          862|           self: loc: defs:
+             |                      ^
+          863|           (self.v2 { inherit loc defs; }).value;
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:879:13:
+          878|             headError = checkDefsForError check loc defs;
+          879|             value = mapAttrs (
+             |             ^
+          880|               n: v:
+
+       … while calling the 'mapAttrs' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:879:21:
+          878|             headError = checkDefsForError check loc defs;
+          879|             value = mapAttrs (
+             |                     ^
+          880|               n: v:
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:873:17:
+          872|                 # Meaning it is less lazy
+          873|                 filterAttrs (n: v: v.optionalValue ? value) (
+             |                 ^
+          874|                   zipAttrsWith (name: defs: mergeDefinitions (loc ++ [ name ]) elemType defs) (pushPositions defs)
+
+       … while calling 'filterAttrs'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:23:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                       ^
+          664|
+
+       … while calling the 'removeAttrs' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:28:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                            ^
+          664|
+
+       … while calling the 'filter' builtin
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:45:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                                             ^
+          664|
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:53:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                                                     ^
+          664|
+
+       … in the argument of the not operator
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:60:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                                                            ^
+          664|
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:663:60:
+          662|   */
+          663|   filterAttrs = pred: set: removeAttrs set (filter (name: !pred name set.${name}) (attrNames set));
+             |                                                            ^
+          664|
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:873:33:
+          872|                 # Meaning it is less lazy
+          873|                 filterAttrs (n: v: v.optionalValue ? value) (
+             |                                 ^
+          874|                   zipAttrsWith (name: defs: mergeDefinitions (loc ++ [ name ]) elemType defs) (pushPositions defs)
+
+       (10 duplicate frames omitted)
+
+       … while evaluating definitions from `/nix/store/qnbx4l3lrz617djzprwwvi3ss3sfn00q-source/src/modules/lib.nix':
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1171:80:
+         1170|               }
+         1171|           ) (addErrorContext "while evaluating definitions from `${m.file}':" (dischargeProperties m.value))
+             |                                                                                ^
+         1172|         ) defs;
+
+       … while calling 'dischargeProperties'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1311:5:
+         1310|   dischargeProperties =
+         1311|     def:
+             |     ^
+         1312|     if def._type or "" == "merge" then
+
+       … while evaluating a branch condition
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1312:5:
+         1311|     def:
+         1312|     if def._type or "" == "merge" then
+             |     ^
+         1313|       concatMap dischargeProperties def.contents
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/types.nix:820:11:
+          819|           inherit (def) file;
+          820|           value = v;
+             |           ^
+          821|         }) def.value
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/languages/rust.nix:277:48:
+          276|         git-hooks.tools = {
+          277|           cargo = config.lib.mkOverrideDefault cfg.toolchainPackage;
+             |                                                ^
+          278|           rustfmt = config.lib.mkOverrideDefault cfg.toolchainPackage;
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1188:17:
+         1187|         mapAttrs (
+         1188|           name: value:
+             |                 ^
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+
+       … from call site
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/attrsets.nix:1189:85:
+         1188|           name: value:
+         1189|           if isAttrs value && cond value then recurse (path ++ [ name ]) value else f (path ++ [ name ]) value
+             |                                                                                     ^
+         1190|         );
+
+       … while calling anonymous lambda
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:275:71:
+          274|           # For definitions that have an associated option
+          275|           declaredConfig = mapAttrsRecursiveCond (v: !isOption v) (_: v: v.value) options;
+             |                                                                       ^
+          276|
+
+       … while evaluating the attribute 'value'
+         at «github:NixOS/nixpkgs/207d15f1a6603226e1e223dc79ac29c7846da32e?narHash=sha256-H3AfG4ObMDTkTJYkd8cz1/RbY9LatN5Mk4UF48VuSXc%3D»/lib/modules.nix:1118:7:
+         1117|     // {
+         1118|       value = addErrorContext "while evaluating the option `${showOption loc}':" value;
+             |       ^
+         1119|       inherit (res.defsFinal') highestPrio;
+
+       … while evaluating the option `languages.rust.toolchainPackage':
+
+       (8 duplicate frames omitted)
+
+       … from call site
+         at «github:cachix/devenv/1b355dec9bddbaddbe4966d6fc30d7aa3af8575b»/src/modules/languages/rust.nix:315:24:
+          314|         # This symlinkJoins and patches the individual components.
+          315|         mkAggregated = import (rust-overlay + "/lib/mk-aggregated.nix") {
+             |                        ^
+          316|           inherit (pkgs) lib stdenv symlinkJoin bash curl;
+
+       error: at «github:oxalica/rust-overlay/3ecb5e6ab380ced3272ef7fcfe398bffbcc0f152»/lib/mk-aggregated.nix:1:1:
+            1| {
+             | ^
+            2|   lib,
+
+       error: function 'anonymous lambda' called without required argument 'pkgsHostHost'
+✖ Building shell in 645ms
+Error:   × Command `/nix/store/9jvwcrgk8akzzbvw6irh075aypzr8zbc-devenv-nix-2.30.4/bin/nix --show-trace --extra-experimental-features nix-command --extra-experimental-features flakes --option lazy-trees
+  │ true --option warn-dirty false --keep-going --max-jobs 6 --option eval-cache false --option always-allow-substitutes true --option http-connections 100 --option extra-substituters https://
+  │ devenv.cachix.org --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= print-dev-env --profile /home/whit/projects/deduplifier/.devenv/gc/shell
+  │ -vv --log-format internal-json` failed with exit code 1
+
+direnv: failed to build the devenv environment. devenv.nix may contain errors. see above.
+direnv: export +DEVENV_CMDLINE +DEVENV_DIRENVRC_ROLLING_UPGRADE +DEVENV_DIRENVRC_VERSION
+
+❯                                                                                                                                                                                 deduplifier  main !?
+
+❯ 
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="copilot_multiReplaceString">
+<details>
+<summary>Tool use: **copilot_multiReplaceString**</summary>
+
+Additional data:
+
+```json
+{
+  "vscodeToolId": "copilot_multiReplaceString",
+  "isHidden": true
+}
+```
+Result:
+
+```json
+{
+  "invocationMessage": "Using \"Multi-Replace String in Files\"",
+  "isConfirmed": {
+    "type": 1
+  },
+  "content": "&#96;&#96;&#96;nix\n    # additional tools\n    bacon            # background code checker\n    rust-analyzer    # LSP server (devenv includes this but explicit is good)\n  ];\n  languages.rust = {\n    enable = true;\n    # using stable channel by default, can override per-project\n    # channel = \"stable\"; # requires rust-overlay input\n    # NOTE: adding targets (e.g. for Windows cross-compilation) requires\n    # channel = \"stable\", which in turn requires rust-overlay as a devenv\n    # input. This is currently broken due to a version mismatch between\n    # devenv's pinned rust-overlay and the one added via &#96;devenv inputs add&#96;.\n    # Revisit when devenv is updated.\n  };\n&#96;&#96;&#96;\n\n",
+  "textEditContent": "    # additional tools\n    bacon            # background code checker\n    rust-analyzer    # LSP server (devenv includes this but explicit is good)\n  ];  languages.rust = {\n    enable = true;\n    # using stable channel by default, can override per-project\n    # channel = \"stable\"; # requires rust-overlay input\n    # NOTE: adding targets (e.g. for Windows cross-compilation) requires\n    # channel = \"stable\", which in turn requires rust-overlay as a devenv\n    # input. This is currently broken due to a version mismatch between\n    # devenv's pinned rust-overlay and the one added via &#96;devenv inputs add&#96;.\n    # Revisit when devenv is updated.\n  };",
+  "toolCallResult": null
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+The error is clear: `function 'anonymous lambda' called without required argument 'pkgsHostHost'` — this is a version mismatch between devenv's pinned rust-overlay commit and the version that was just added. devenv has its own pinned rust-overlay internally, and when you add rust-overlay as an input, it conflicts with the version devenv expects.
+
+This is a known bug in devenv 1.x with the version of rust-overlay they pin. The `pkgsHostHost` argument was added to rust-overlay in a newer commit than what devenv pins.
+
+The real fix here is that this is a devenv version compatibility issue. The version of devenv being used (`1b355dec9bddbaddbe4966d6fc30d7aa3af8575b`) pins an old rust-overlay that doesn't have `pkgsHostHost`, but the newly added rust-overlay input is a newer version that does require it.
+ 
+So the best path forward is to revert the devenv.nix changes and handle Windows cross-compilation through `.cargo/config.toml` with the linker instead. I could try using `pkgs.pkgsCross.mingwW64.stdenv.cc` in the packages section without modifying the Rust channel, but that still runs into the same incompatibility when adding targets to the rust section.
+
+Since this is a known issue with the current devenv version, I'll revert to the last working state and add a TODO to revisit this once devenv is updated.The root issue is clear: devenv's internally pinned rust-overlay commit is too old to work with the `channel` + `targets` feature — it's a devenv version bug, not something we can work around in `devenv.nix`. Let's revert to a working state and note the limitation: `direnv reload` should work again now. For Windows builds, the practical path for now is to update devenv itself when a newer version fixes the rust-overlay pin — this is a [known devenv issue](https://github.com/cachix/devenv/issues). Once devenv is updated, the `channel = "stable"; targets = [...]` approach will work cleanly.
+
+---
+
+_**User (2026-04-29 22:20Z)**_
+
+could this be a factor:  ✨ devenv 1.11.1 is out of date. Please update to 1.11.2: https://devenv.sh/getting-started/#installation
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+Yes, possibly. The user should update devenv and try again.Possibly — 1.11.2 may have updated the pinned rust-overlay to a version that includes `pkgsHostHost`. Worth trying. The devenv update instructions depend on how you installed it — typically on NixOS it's managed through your system config or home-manager. Once updated, re-add the `channel` and `targets` lines and try `direnv reload` again.
+
+---
+
+_**User (2026-04-29 22:30Z)**_
+
+tried devenv update twice, killed it the first time, still running the second time:  📋 changelog
+
+2026-03-08: languages.rust.import now uses your configured toolchain
+
+  Previously, languages.rust.import would use the default, stable version of Rust from nixpkgs to build packages. Now, languages.rust.import uses the toolchain configured with your development environment (languages.rust.toolchainPackage).
+
+direnv: loading ~/projects/deduplifier/.envrc
+direnv: using devenv
+• Using Cachix caches: devenv
+⠴ Building shell                                                                                                                                                                                      direnv: ([/nix/store/56c0fxbfzr8zzvfs26v6fsby34gb9h9n-direnv-2.37.1/bin/direnv export fish]) is taking a while to execute. Use CTRL-C to give up.
+Received SIGINT (Ctrl+C), shutting down gracefully...
+error:
+       error: interrupted by the user
+✖ Building shell in 382s
+Error:   × Command `/nix/store/9jvwcrgk8akzzbvw6irh075aypzr8zbc-devenv-nix-2.30.4/bin/nix --show-trace --extra-experimental-features nix-command --extra-experimental-features flakes --option lazy-trees
+  │ true --option warn-dirty false --keep-going --max-jobs 6 --option eval-cache false --option always-allow-substitutes true --option http-connections 100 --option extra-substituters https://
+  │ devenv.cachix.org --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= print-dev-env --profile /home/whit/projects/deduplifier/.devenv/gc/shell
+  │ -vv --log-format internal-json` failed with exit code 1
+
+direnv: error signal: killed
+
+❯ devenv update                                                                                                                                                                 󱄅 deduplifier  main !?
+✓ Updating devenv.lock in 1.08s
+• Using Cachix caches: devenv
+direnv: loading ~/projects/deduplifier/.envrc
+direnv: using devenv
+• Using Cachix caches: devenv
+⠴ Building shell                                                                                                                                                                                      direnv: ([/nix/store/56c0fxbfzr8zzvfs26v6fsby34gb9h9n-direnv-2.37.1/bin/direnv export fish]) is taking a while to execute. Use CTRL-C to give up.
+⠙ Building shell    
+
+---
+
+_**Agent (model copilot/claude-sonnet-4.6)**_
+
+The user is running `devenv update` which updates the lock file, and it's building the shell with the new channel = "stable" + targets configuration. It's taking a long time because it needs to download the Rust stable toolchain. Let them wait it out.Let it run — it's downloading the Rust stable toolchain for the first time via rust-overlay, which is large. The long build time is expected on the first run after adding `channel = "stable"`. Subsequent shell loads will be fast once it's cached.
+
+---
+
