@@ -6,6 +6,7 @@ mod merge;
 mod photos;
 mod scan;
 mod similar;
+mod ui;
 mod utils;
 
 use std::path::{Path, PathBuf};
@@ -35,11 +36,11 @@ struct Args {
     #[arg(long, value_name = "THRESHOLD")]
     similarity: Option<Option<f64>>,
 
-    /// merge two directory trees together (not yet implemented)
+    /// merge two directory trees together
     #[arg(long)]
     merge: bool,
 
-    /// sort photos into a date-based folder hierarchy (not yet implemented)
+    /// sort photos into a date-based folder hierarchy
     #[arg(long)]
     sort_photos: bool,
 
@@ -107,60 +108,28 @@ fn main() -> Result<()> {
     }
 
     let conn = db::init_database(&args.database)?;
-    let mut total_invalid_paths = 0usize;
 
     let all_directories: Vec<&Path> = build_scan_list(&args.directories, args.canon.as_ref())
         .into_iter()
         .map(|p| p.as_path())
         .collect();
 
-    for directory in &all_directories {
-        if !directory.exists() {
-            eprintln!(
-                "Warning: Directory {:?} does not exist, skipping",
-                directory
-            );
-            continue;
-        }
+    ui::run_scan(&conn, &all_directories)?;
 
-        println!("Counting files in directory: {:?}", directory);
-        let total_files = hashing::count_files(directory)?;
-        println!("Found {} files to process", total_files);
-
-        println!("Scanning directory: {:?}", directory);
-        let invalid = scan::scan_directory(&conn, directory, total_files, true)?;
-        total_invalid_paths += invalid;
-        println!(""); // New line after progress
+    enum Op<'a> {
+        DupDirs,
+        DupFiles,
+        Similarity(f64),
+        Merge { canon: &'a Path },
+        SortPhotos { canon: &'a Path },
     }
 
-    if total_invalid_paths > 0 {
-        eprintln!(
-            "\nWarning: {} file path(s) with invalid UTF-8 were skipped during this scan.",
-            total_invalid_paths
-        );
-        eprintln!("Please rename these files and re-run to continue.");
-        return Ok(());
-    }
-
-    if args.dup_dirs {
-        println!("\n=== Finding duplicate directories ===");
-        duplicates::find_duplicate_directories(
-            &conn,
-            args.delete,
-            args.canon.as_deref(),
-            args.no_confirmation,
-            &all_directories,
-        )?
+    let op = if args.dup_dirs {
+        Op::DupDirs
     } else if args.dup_files {
-        println!("\n=== Finding duplicate files ===");
-        duplicates::find_duplicate_files(&conn)?
+        Op::DupFiles
     } else if let Some(threshold_opt) = args.similarity {
-        let threshold = threshold_opt.unwrap_or(0.85);
-        println!(
-            "\n=== Finding similar (near-duplicate) directories (threshold: {:.0}%) ===",
-            threshold * 100.0
-        );
-        similar::find_similar_directories(&conn, threshold, &all_directories, true)?
+        Op::Similarity(threshold_opt.unwrap_or(0.85))
     } else if args.merge {
         if !args.delete {
             eprintln!(
@@ -168,22 +137,13 @@ fn main() -> Result<()> {
             );
             std::process::exit(1);
         }
-        let canon = match args.canon.as_deref() {
-            Some(c) => c,
-            None => {
-                eprintln!("Error: --merge requires --canon to specify the merge target.");
-                std::process::exit(1);
-            }
-        };
-        // sources = everything except canon
-        let sources: Vec<&Path> = all_directories
-            .iter()
-            .copied()
-            .filter(|&p| p != canon)
-            .collect();
-        println!("\n=== Merging directories into canon ===");
-        merge::merge_into_canon(&conn, canon, &sources, args.no_confirmation)?
-    } else if args.sort_photos {
+        let canon = args.canon.as_deref().unwrap_or_else(|| {
+            eprintln!("Error: --merge requires --canon to specify the merge target.");
+            std::process::exit(1);
+        });
+        Op::Merge { canon }
+    } else {
+        // sort_photos (op_count check above guarantees exactly one op)
         if !args.delete || !args.no_confirmation {
             eprintln!(
                 "Error: --sort-photos requires both --delete and --no-confirmation, \
@@ -191,15 +151,45 @@ fn main() -> Result<()> {
             );
             std::process::exit(1);
         }
-        let canon = match args.canon.as_deref() {
-            Some(c) => c,
-            None => {
-                eprintln!("Error: --sort-photos requires --canon to specify where date-based directories will be created.");
-                std::process::exit(1);
-            }
-        };
-        println!("\n=== Sorting photos into date-based directories ===");
-        photos::sort_photos(&conn, &all_directories, canon)?
+        let canon = args.canon.as_deref().unwrap_or_else(|| {
+            eprintln!("Error: --sort-photos requires --canon to specify where date-based directories will be created.");
+            std::process::exit(1);
+        });
+        Op::SortPhotos { canon }
+    };
+
+    match op {
+        Op::DupDirs => {
+            ui::show_section("Finding duplicate directories");
+            ui::run_dup_dirs(
+                &conn,
+                args.delete,
+                args.canon.as_deref(),
+                args.no_confirmation,
+                &all_directories,
+            )?;
+        }
+        Op::DupFiles => {
+            ui::show_section("Finding duplicate files");
+            ui::run_dup_files(&conn)?;
+        }
+        Op::Similarity(threshold) => {
+            ui::show_similarity_section(threshold);
+            ui::run_similar(&conn, threshold, &all_directories, true)?;
+        }
+        Op::Merge { canon } => {
+            let sources: Vec<&Path> = all_directories
+                .iter()
+                .copied()
+                .filter(|&p| p != canon)
+                .collect();
+            ui::show_section("Merging directories into canon");
+            ui::run_merge(&conn, canon, &sources, args.no_confirmation)?;
+        }
+        Op::SortPhotos { canon } => {
+            ui::show_section("Sorting photos into date-based directories");
+            ui::run_sort_photos(&conn, &all_directories, canon)?;
+        }
     }
 
     Ok(())

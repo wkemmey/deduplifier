@@ -1,50 +1,45 @@
 use std::collections::HashSet;
-use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::{db, file_system};
+use crate::db;
 
 /// A single directory instance that is a member of a duplicate group.
-struct DirEntry {
-    path: String,
-    size: i64,
+pub struct DirEntry {
+    pub path: String,
+    pub size: i64,
 }
 
 /// A set of directories that all share the same hash, along with aggregate metadata.
-struct DuplicateGroup {
-    hash: String,
-    max_size: i64,
-    members: Vec<DirEntry>,
+pub struct DuplicateGroup {
+    pub hash: String,
+    pub max_size: i64,
+    pub members: Vec<DirEntry>,
 }
 
-pub fn find_duplicate_files(conn: &Connection) -> Result<()> {
+/// A group of files that share the same hash (i.e. exact duplicates).
+pub struct DuplicateFileGroup {
+    pub hash: String,
+    pub count: i64,
+    pub total_size: i64,
+    pub files: Vec<db::FileRecord>,
+}
+
+pub fn find_duplicate_files(conn: &Connection) -> Result<Vec<DuplicateFileGroup>> {
     let groups = db::duplicate_file_groups(conn)?;
-
-    if groups.is_empty() {
-        println!("No duplicate files found.");
-        return Ok(());
-    }
-
+    let mut result = Vec::new();
     for group in groups {
-        let hash_display = if group.hash.len() >= 16 {
-            &group.hash[..16]
-        } else {
-            &group.hash
-        };
-        println!(
-            "\nDuplicate files (hash: {}, count: {}, total size: {} bytes):",
-            hash_display, group.count, group.size
-        );
-
-        for record in db::files_with_hash(conn, &group.hash)? {
-            println!("  - {} ({} bytes)", record.path, record.size);
-        }
+        let files = db::files_with_hash(conn, &group.hash)?;
+        result.push(DuplicateFileGroup {
+            hash: group.hash,
+            count: group.count,
+            total_size: group.size,
+            files,
+        });
     }
-
-    Ok(())
+    Ok(result)
 }
 
 /// From a list of duplicate directory groups, fetch paths for each group,
@@ -53,7 +48,7 @@ pub fn find_duplicate_files(conn: &Connection) -> Result<()> {
 /// (those not entirely contained within another duplicate group) vs. covered
 /// sub-groups (which will be skipped to avoid double-deletion).
 /// Returns `(top_level, covered_count)`.
-fn build_top_level_groups(
+pub fn build_top_level_groups(
     conn: &Connection,
     duplicate_group_hashes: &[db::DuplicateGroupHash],
     scanned_dirs: &[&Path],
@@ -122,166 +117,6 @@ fn build_top_level_groups(
         .collect();
 
     Ok((top_level, covered_count))
-}
-
-pub fn find_duplicate_directories(
-    conn: &Connection,
-    delete: bool,
-    canon: Option<&Path>,
-    no_confirmation: bool,
-    scanned_dirs: &[&Path],
-) -> Result<()> {
-    // Collect all duplicate groups upfront so we can iterate interactively
-    let duplicate_group_hashes = db::duplicate_directory_groups(conn)?;
-
-    if duplicate_group_hashes.is_empty() {
-        println!("No duplicate directories found.");
-        return Ok(());
-    }
-
-    let (top_level_groups, covered_count) =
-        build_top_level_groups(conn, &duplicate_group_hashes, scanned_dirs)?;
-
-    println!(
-        "Found {} set(s) of duplicate directories ({} are subdirectories of other duplicates and will be skipped).",
-        top_level_groups.len(),
-        covered_count,
-    );
-
-    let stdin = io::stdin();
-
-    for group in &top_level_groups {
-        let hash_display = if group.hash.len() >= 16 {
-            &group.hash[..16]
-        } else {
-            &group.hash
-        };
-        println!(
-            "\nDuplicate directories (hash: {}…, count: {}, size: {} bytes each):",
-            hash_display,
-            group.members.len(),
-            group.max_size
-        );
-
-        for (i, entry) in group.members.iter().enumerate() {
-            println!("  [{}] {} ({} bytes)", i + 1, entry.path, entry.size);
-        }
-
-        if !delete {
-            continue;
-        }
-
-        let dirs = &group.members;
-
-        // Determine if --canon auto-selects a keeper
-        let auto_keep: Option<usize> = if let Some(canon_path) = canon {
-            dirs.iter()
-                .position(|e| Path::new(&e.path).starts_with(canon_path))
-        } else {
-            None
-        };
-
-        // If --no-confirmation is set and multiple members are under canon, we can't
-        // safely auto-select — deleting within canon silently would defeat its purpose.
-        // When confirming individually, the user can handle it themselves.
-        if no_confirmation {
-            if let Some(canon_path) = canon {
-                let canon_count = dirs
-                    .iter()
-                    .filter(|e| Path::new(&e.path).starts_with(canon_path))
-                    .count();
-                if canon_count > 1 {
-                    println!(
-                        "  Warning: {} members are under --canon ({}); skipping this group.",
-                        canon_count,
-                        canon_path.display()
-                    );
-                    println!();
-                    continue;
-                }
-            }
-        }
-
-        let keep_idx: usize = if let Some(idx) = auto_keep {
-            println!(
-                "  Auto-selecting [{}] as canonical: {}",
-                idx + 1,
-                dirs[idx].path
-            );
-            idx
-        } else {
-            print!("  Keep which? (1-{}, or 's' to skip): ", dirs.len());
-            io::stdout().flush()?;
-            let mut line = String::new();
-            stdin.lock().read_line(&mut line)?;
-            let trimmed = line.trim();
-            if trimmed.eq_ignore_ascii_case("s") {
-                println!("  Skipped.");
-                continue;
-            }
-            match trimmed.parse::<usize>() {
-                Ok(n) if n >= 1 && n <= dirs.len() => n - 1,
-                _ => {
-                    println!("  Invalid choice, skipping.");
-                    continue;
-                }
-            }
-        };
-
-        // List what will be deleted and ask for type-to-confirm
-        let to_delete: Vec<&str> = dirs
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| *i != keep_idx)
-            .map(|(_, e)| e.path.as_str())
-            .collect();
-
-        println!("  Keeping:  {}", dirs[keep_idx].path);
-        println!("  Will permanently delete:");
-        for path in &to_delete {
-            println!("    - {}", path);
-        }
-
-        for path in &to_delete {
-            // When --no-confirmation is set and canon drove the choice, skip the prompt
-            let confirmed = if no_confirmation && auto_keep.is_some() {
-                println!("  Deleting '{}' (--no-confirmation)", path);
-                true
-            } else {
-                print!("  Confirm deletion of '{}' [y/N] > ", path);
-                io::stdout().flush()?;
-                let mut confirmation = String::new();
-                stdin.lock().read_line(&mut confirmation)?;
-                if !confirmation.trim().eq_ignore_ascii_case("y") {
-                    println!("  Skipped.");
-                    false
-                } else {
-                    true
-                }
-            };
-
-            if !confirmed {
-                continue;
-            }
-
-            // Delete the directory from disk
-            let dir_path = Path::new(path);
-            if dir_path.exists() {
-                file_system::delete_dir_all(dir_path)?;
-                println!("  Deleted '{}'.", path);
-            } else {
-                println!("  '{}' no longer exists on disk, skipping.", path);
-            }
-
-            // Remove from database: the directory itself and all files/subdirs under it
-            db::remove_tree(conn, dir_path)?;
-            println!("  Removed '{}' and its contents from the database.", path);
-        }
-
-        println!(); // blank line between groups
-    }
-
-    Ok(())
 }
 
 // ------------------------------------------------------------------
@@ -429,31 +264,24 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // find_duplicate_directories — integration (delete=false, no prompt)
+    // find_duplicate_files — returns data, does not mutate DB
     // -----------------------------------------------------------------------
 
     #[test]
-    fn test_find_duplicate_dirs_no_duplicates() {
+    fn test_find_duplicate_files_returns_empty_when_no_duplicates() {
         let conn = open_test_db();
-        find_duplicate_directories(&conn, false, None, false, &[Path::new("/")]).unwrap();
+        let groups = find_duplicate_files(&conn).unwrap();
+        assert!(groups.is_empty());
     }
 
     #[test]
-    fn test_find_duplicate_dirs_with_duplicates_no_delete() {
+    fn test_find_duplicate_files_returns_group_with_files() {
         let conn = open_test_db();
-        insert_dir(&conn, "/a/photos", "deadbeef", 1024);
-        insert_dir(&conn, "/b/photos", "deadbeef", 1024);
-        // delete=false — no prompt, just display
-        find_duplicate_directories(
-            &conn,
-            false,
-            None,
-            false,
-            &[Path::new("/a"), Path::new("/b")],
-        )
-        .unwrap();
-        // Both dirs should still be in the DB
-        let dirs = db::directories_with_hash(&conn, "deadbeef").unwrap();
-        assert_eq!(dirs.len(), 2, "dirs should be untouched when delete=false");
+        insert_file(&conn, "/a/file.txt", "hash_dup", 100);
+        insert_file(&conn, "/b/file.txt", "hash_dup", 100);
+        let groups = find_duplicate_files(&conn).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].count, 2);
+        assert_eq!(groups[0].files.len(), 2);
     }
 }

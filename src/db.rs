@@ -107,8 +107,7 @@ pub fn get_file(conn: &Connection, path: &Path) -> Result<Option<FileRecord>> {
 
 /// Return all file records, ordered by path.
 pub fn all_files(conn: &Connection) -> Result<Vec<FileRecord>> {
-    let mut stmt =
-        conn.prepare("SELECT path, hash, size, modified FROM files ORDER BY path")?;
+    let mut stmt = conn.prepare("SELECT path, hash, size, modified FROM files ORDER BY path")?;
     let rows = stmt
         .query_map([], |row| {
             Ok(FileRecord {
@@ -783,21 +782,37 @@ mod tests {
 
         // Everything under /tree is gone
         let file_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM files WHERE path LIKE '/tree%'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE path LIKE '/tree%'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(file_count, 0);
         let dir_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM directories WHERE path LIKE '/tree%'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM directories WHERE path LIKE '/tree%'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(dir_count, 0);
 
         // /other is untouched
         let other_files: i64 = conn
-            .query_row("SELECT COUNT(*) FROM files WHERE path LIKE '/other%'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE path LIKE '/other%'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(other_files, 1);
         let other_dirs: i64 = conn
-            .query_row("SELECT COUNT(*) FROM directories WHERE path = '/other'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM directories WHERE path = '/other'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(other_dirs, 1);
     }

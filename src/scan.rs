@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -25,6 +24,7 @@ fn scan_files(
     root: &Path,
     total_files: usize,
     files_by_dir: &mut HashMap<PathBuf, Vec<FileEntry>>,
+    on_progress: impl Fn(usize, usize, &str),
 ) -> Result<usize> {
     let mut processed = 0;
     let mut invalid_paths = 0usize;
@@ -39,10 +39,7 @@ fn scan_files(
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("<unknown>");
-            // \r - return to the start of the line
-            // \x1B[K - clear everything from cursor to end of line
-            print!("\r\x1B[K{}/{} - {}", processed, total_files, file_name);
-            io::stdout().flush()?;
+            on_progress(processed, total_files, file_name);
 
             let metadata = fs::metadata(path)?;
             let modified = metadata.modified()?;
@@ -125,50 +122,40 @@ fn compute_directory_hashes(
     Ok(())
 }
 
+/// Result returned by `scan_directory`.
+/// Stale-entry handling (prompting + deletion) is left to the caller.
+#[derive(Debug)]
+pub struct ScanResult {
+    pub invalid_paths: usize,
+    pub stale_count: i64,
+    pub root_str: String,
+}
+
+/// Scan `root`: hash new/changed files, update the DB, compute directory hashes.
+/// Progress is reported via `on_progress(processed, total, filename)`.
+/// Stale DB entries are counted but NOT deleted; the caller decides whether to
+/// call `db::delete_stale_files` based on `result.stale_count`.
 pub fn scan_directory(
     conn: &Connection,
     root: &Path,
     total_files: usize,
-    prompt_stale: bool,
-) -> Result<usize> {
+    on_progress: impl Fn(usize, usize, &str),
+) -> Result<ScanResult> {
     db::init_visited_files(conn)?;
 
     let mut files_by_dir: HashMap<PathBuf, Vec<FileEntry>> = HashMap::new();
-    let invalid_paths = scan_files(conn, root, total_files, &mut files_by_dir)?;
+    let invalid_paths = scan_files(conn, root, total_files, &mut files_by_dir, on_progress)?;
 
     let root_str = utils::path_to_str(root)?.to_string();
-    println!("\nChecking for stale database entries (this may take several minutes for large directories)...");
-    io::stdout().flush()?;
-
     let stale_count = db::stale_file_count(conn, &root_str)?;
-    if stale_count > 0 {
-        println!(
-            "\n{} file(s) in the database no longer exist on disk under {:?}.",
-            stale_count, root
-        );
-
-        let should_delete = if prompt_stale {
-            print!("Delete them from the database? [y/N] ");
-            io::stdout().flush()?;
-            let stdin = io::stdin();
-            let mut line = String::new();
-            stdin.lock().read_line(&mut line)?;
-            line.trim().eq_ignore_ascii_case("y")
-        } else {
-            false
-        };
-
-        if should_delete {
-            db::delete_stale_files(conn, &root_str)?;
-            println!("Deleted {} stale file(s) from the database.", stale_count);
-        } else if prompt_stale {
-            println!("Skipped deletion of stale entries.");
-        }
-    }
 
     compute_directory_hashes(conn, root, &files_by_dir)?;
 
-    Ok(invalid_paths)
+    Ok(ScanResult {
+        invalid_paths,
+        stale_count,
+        root_str,
+    })
 }
 
 // ------------------------------------------------------------------
@@ -231,7 +218,7 @@ mod tests {
         let conn = open_test_db();
         db::init_visited_files(&conn).unwrap();
         let mut files_by_dir = HashMap::new();
-        scan_files(&conn, dir.path(), 1, &mut files_by_dir).unwrap();
+        scan_files(&conn, dir.path(), 1, &mut files_by_dir, |_, _, _| ()).unwrap();
 
         let files = files_by_dir
             .get(dir.path())
@@ -253,7 +240,7 @@ mod tests {
         let conn = open_test_db();
         db::init_visited_files(&conn).unwrap();
         let mut files_by_dir = HashMap::new();
-        scan_files(&conn, dir.path(), 2, &mut files_by_dir).unwrap();
+        scan_files(&conn, dir.path(), 2, &mut files_by_dir, |_, _, _| ()).unwrap();
 
         let visited_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM visited_files", [], |r| r.get(0))
@@ -275,7 +262,7 @@ mod tests {
         // First scan — stores real hash and modified time
         db::init_visited_files(&conn).unwrap();
         let mut files_by_dir = HashMap::new();
-        scan_files(&conn, dir.path(), 1, &mut files_by_dir).unwrap();
+        scan_files(&conn, dir.path(), 1, &mut files_by_dir, |_, _, _| ()).unwrap();
 
         // Overwrite the hash with a sentinel, keeping modified time unchanged
         conn.execute(
@@ -287,7 +274,7 @@ mod tests {
         // Second scan — modified time hasn't changed, so cache should be used
         db::init_visited_files(&conn).unwrap();
         let mut files_by_dir2 = HashMap::new();
-        scan_files(&conn, dir.path(), 1, &mut files_by_dir2).unwrap();
+        scan_files(&conn, dir.path(), 1, &mut files_by_dir2, |_, _, _| ()).unwrap();
 
         let stored_hash = get_file_hash(&conn, &file);
         assert_eq!(
@@ -311,7 +298,7 @@ mod tests {
         // First scan
         db::init_visited_files(&conn).unwrap();
         let mut files_by_dir = HashMap::new();
-        scan_files(&conn, dir.path(), 1, &mut files_by_dir).unwrap();
+        scan_files(&conn, dir.path(), 1, &mut files_by_dir, |_, _, _| ()).unwrap();
 
         // Store a wrong hash and wind back the modified time in the DB so
         // should_update_file sees a mismatch on the next scan
@@ -324,7 +311,7 @@ mod tests {
         // Second scan — modified time mismatch triggers re-hash
         db::init_visited_files(&conn).unwrap();
         let mut files_by_dir2 = HashMap::new();
-        scan_files(&conn, dir.path(), 1, &mut files_by_dir2).unwrap();
+        scan_files(&conn, dir.path(), 1, &mut files_by_dir2, |_, _, _| ()).unwrap();
 
         let stored_hash = get_file_hash(&conn, &file);
         assert_ne!(
@@ -347,7 +334,7 @@ mod tests {
         let conn = open_test_db();
         db::init_visited_files(&conn).unwrap();
         let mut files_by_dir = HashMap::new();
-        scan_files(&conn, dir.path(), 1, &mut files_by_dir).unwrap();
+        scan_files(&conn, dir.path(), 1, &mut files_by_dir, |_, _, _| ()).unwrap();
         compute_directory_hashes(&conn, dir.path(), &files_by_dir).unwrap();
 
         let dir_count: i64 = conn
@@ -371,7 +358,7 @@ mod tests {
             let conn = open_test_db();
             db::init_visited_files(&conn).unwrap();
             let mut fbd = HashMap::new();
-            scan_files(&conn, root.path(), 1, &mut fbd).unwrap();
+            scan_files(&conn, root.path(), 1, &mut fbd, |_, _, _| ()).unwrap();
             compute_directory_hashes(&conn, root.path(), &fbd).unwrap();
             get_dir_hash(&conn, root.path())
         };
@@ -394,7 +381,7 @@ mod tests {
         fs::write(dir.path().join("a.txt"), "hello").unwrap();
 
         let conn = open_test_db();
-        scan_directory(&conn, dir.path(), 1, false).unwrap();
+        scan_directory(&conn, dir.path(), 1, |_, _, _| ()).unwrap();
 
         let record = db::get_file(&conn, &dir.path().join("a.txt"))
             .unwrap()
@@ -417,7 +404,7 @@ mod tests {
         fs::write(dir_b.join("file.txt"), "same content").unwrap();
 
         let conn = open_test_db();
-        scan_directory(&conn, root.path(), 2, false).unwrap();
+        scan_directory(&conn, root.path(), 2, |_, _, _| ()).unwrap();
 
         let hash_a = get_dir_hash(&conn, &dir_a);
         let hash_b = get_dir_hash(&conn, &dir_b);
@@ -435,7 +422,7 @@ mod tests {
         fs::write(dir_b.join("file.txt"), "content B").unwrap();
 
         let conn = open_test_db();
-        scan_directory(&conn, root.path(), 2, false).unwrap();
+        scan_directory(&conn, root.path(), 2, |_, _, _| ()).unwrap();
 
         let hash_a = get_dir_hash(&conn, &dir_a);
         let hash_b = get_dir_hash(&conn, &dir_b);
@@ -448,14 +435,14 @@ mod tests {
         fs::write(dir.path().join("a.txt"), "hello").unwrap();
 
         let conn = open_test_db();
-        scan_directory(&conn, dir.path(), 1, false).unwrap();
+        scan_directory(&conn, dir.path(), 1, |_, _, _| ()).unwrap();
 
         // Insert a ghost record for a file that doesn't exist on disk
         let ghost = dir.path().join("ghost.txt");
         insert_ghost_file(&conn, &ghost);
 
-        // Rescan with prompt_stale=false — ghost record should survive
-        scan_directory(&conn, dir.path(), 1, false).unwrap();
+        // Rescan — ghost record should survive (caller decides what to do with stale entries)
+        scan_directory(&conn, dir.path(), 1, |_, _, _| ()).unwrap();
 
         let count: i64 = conn
             .query_row(
@@ -476,7 +463,7 @@ mod tests {
         fs::write(dir.path().join("a.txt"), "hello").unwrap();
 
         let conn = open_test_db();
-        let invalid = scan_directory(&conn, dir.path(), 1, false).unwrap();
-        assert_eq!(invalid, 0);
+        let result = scan_directory(&conn, dir.path(), 1, |_, _, _| ()).unwrap();
+        assert_eq!(result.invalid_paths, 0);
     }
 }

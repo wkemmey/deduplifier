@@ -22,10 +22,16 @@ pub fn move_file(from: &Path, to: &Path) -> Result<()> {
         Ok(()) => Ok(()),
         Err(_) => {
             // rename failed — likely a cross-device move; fall back to copy-then-delete
-            fs::copy(from, to)
-                .with_context(|| format!("copying {} -> {} (cross-device move)", from.display(), to.display()))?;
-            fs::remove_file(from)
-                .with_context(|| format!("deleting source {} after cross-device move", from.display()))
+            fs::copy(from, to).with_context(|| {
+                format!(
+                    "copying {} -> {} (cross-device move)",
+                    from.display(),
+                    to.display()
+                )
+            })?;
+            fs::remove_file(from).with_context(|| {
+                format!("deleting source {} after cross-device move", from.display())
+            })
         }
     }
 }

@@ -27,24 +27,26 @@ const YEAR_MIN: i32 = 1990;
 // Public entry point
 // ---------------------------------------------------------------------------
 
-/// Sort all media files under each of `directories` into date-based subdirs rooted at `canon`.
-/// Requires `--delete` + `--no-confirmation` to have been validated by the caller.
-pub fn sort_photos(conn: &Connection, directories: &[&Path], canon: &Path) -> Result<()> {
-    for &root in directories {
-        println!("\nSorting photos in: {}", root.display());
-        sort_root(conn, root, canon)?;
-    }
-    Ok(())
+pub enum SortEvent<'a> {
+    FileCount(usize),
+    Duplicate(&'a Path),
+    Moved(&'a Path, &'a Path),
 }
 
-// ---------------------------------------------------------------------------
-// Per-root logic
-// ---------------------------------------------------------------------------
+pub struct SortStats {
+    pub moved: usize,
+    pub skipped: usize,
+    pub deleted_dups: usize,
+}
 
-fn sort_root(conn: &Connection, root: &Path, canon: &Path) -> Result<()> {
+pub fn sort_root(
+    conn: &Connection,
+    root: &Path,
+    canon: &Path,
+    on_event: &mut impl FnMut(SortEvent<'_>),
+) -> Result<SortStats> {
     let dest_root = canon;
 
-    // Collect all media files under root (snapshot before we start moving things)
     let files: Vec<PathBuf> = WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -53,7 +55,7 @@ fn sort_root(conn: &Connection, root: &Path, canon: &Path) -> Result<()> {
         .map(|e| e.into_path())
         .collect();
 
-    println!("  Found {} media file(s) to process.", files.len());
+    on_event(SortEvent::FileCount(files.len()));
 
     let mut moved = 0usize;
     let mut skipped = 0usize;
@@ -66,7 +68,6 @@ fn sort_root(conn: &Connection, root: &Path, canon: &Path) -> Result<()> {
             .join(format!("{:04}-{:02}", date.0, date.1))
             .join(format!("{:04}-{:02}-{:02}", date.0, date.1, date.2));
 
-        // Already in the right place?
         if let Some(src_parent) = src.parent() {
             if src_parent == dest_dir {
                 skipped += 1;
@@ -78,34 +79,27 @@ fn sort_root(conn: &Connection, root: &Path, canon: &Path) -> Result<()> {
 
         match dest_path {
             DestResult::TrueDuplicate => {
-                // Identical file already exists at destination — remove source
-                println!("  Duplicate (same hash): removing {}", src.display());
-                fs::remove_file(src)
-                    .with_context(|| format!("removing duplicate {}", src.display()))?;
+                on_event(SortEvent::Duplicate(src));
+                file_system::delete_file(src)?;
                 db::remove_file(conn, src)?;
                 deleted_dups += 1;
             }
             DestResult::Path(dest) => {
-                fs::create_dir_all(&dest_dir)
-                    .with_context(|| format!("creating {}", dest_dir.display()))?;
-                fs::rename(src, &dest)
-                    .with_context(|| format!("moving {} -> {}", src.display(), dest.display()))?;
-                println!("  Moved: {} -> {}", src.display(), dest.display());
+                file_system::move_file(src, &dest)?;
+                on_event(SortEvent::Moved(src, &dest));
                 db::move_file(conn, src, &dest)?;
                 moved += 1;
             }
         }
     }
 
-    println!(
-        "  Done: {} moved, {} already sorted, {} true duplicates removed.",
-        moved, skipped, deleted_dups
-    );
-
-    // Delete now-empty subdirectories (but never the root itself)
     file_system::delete_empty_subdirs(root)?;
 
-    Ok(())
+    Ok(SortStats {
+        moved,
+        skipped,
+        deleted_dups,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -344,7 +338,7 @@ mod tests {
             .set_modified(mtime)
             .unwrap_or(()); // best-effort; fallback if unsupported
 
-        sort_root(&conn, root, root).unwrap();
+        sort_root(&conn, root, root, &mut |_| ()).unwrap();
 
         // File should have moved somewhere under root/YYYY/...
         // We don't assert the exact date since set_modified may not work everywhere,
@@ -394,7 +388,7 @@ mod tests {
         fs::create_dir_all(&target_dir).unwrap();
         fs::rename(&tmp, &target).unwrap();
 
-        sort_root(&conn, root, root).unwrap();
+        sort_root(&conn, root, root, &mut |_| ()).unwrap();
 
         // File should still be in place — already sorted
         assert!(target.exists(), "already-sorted file should not move");
@@ -431,7 +425,7 @@ mod tests {
         // Pre-place the identical file at the destination
         write_file(&dest, content);
 
-        sort_root(&conn, root, root).unwrap();
+        sort_root(&conn, root, root, &mut |_| ()).unwrap();
 
         // Source should be deleted (true duplicate)
         assert!(!src.exists(), "true duplicate source should be removed");
@@ -467,7 +461,7 @@ mod tests {
         // Pre-place a DIFFERENT file with the same name
         write_file(&dest_dir.join("photo.jpg"), b"version B");
 
-        sort_root(&conn, root, root).unwrap();
+        sort_root(&conn, root, root, &mut |_| ()).unwrap();
 
         // Source should be gone from original location
         assert!(!src.exists(), "source should have moved");
@@ -489,7 +483,7 @@ mod tests {
         let txt = root.join("notes.txt");
         write_file(&txt, b"some notes");
 
-        sort_root(&conn, root, root).unwrap();
+        sort_root(&conn, root, root, &mut |_| ()).unwrap();
 
         assert!(txt.exists(), "non-media files should not be moved");
     }
@@ -505,7 +499,7 @@ mod tests {
         let src = album.join("photo.jpg");
         write_file(&src, b"vacation photo");
 
-        sort_root(&conn, root, root).unwrap();
+        sort_root(&conn, root, root, &mut |_| ()).unwrap();
 
         // The photo moved out, so summer_vacation should be gone
         assert!(
@@ -526,7 +520,7 @@ mod tests {
         write_file(&photo, b"photo");
         write_file(&notes, b"notes");
 
-        sort_root(&conn, root, root).unwrap();
+        sort_root(&conn, root, root, &mut |_| ()).unwrap();
 
         // Photo moved, but notes.txt keeps the dir non-empty
         assert!(
@@ -548,7 +542,7 @@ mod tests {
         let src = src_root.join("photo.jpg");
         write_file(&src, b"canon test photo");
 
-        sort_root(&conn, &src_root, &canon_root).unwrap();
+        sort_root(&conn, &src_root, &canon_root, &mut |_| ()).unwrap();
 
         // File should have moved into canon_root, not src_root
         let moved: Vec<_> = WalkDir::new(&canon_root)

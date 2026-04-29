@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use anyhow::Result;
@@ -9,26 +8,26 @@ use crate::{db, file_system, utils};
 
 /// One side of a similar-directory pair, with its diff relative to the other side.
 #[derive(Debug)]
-struct DirSide {
-    path: String,
-    file_count: usize,
+pub struct DirSide {
+    pub path: String,
+    pub file_count: usize,
 }
 
 /// A pair of directories that are similar but not identical, along with the diff.
 #[derive(Debug)]
-struct SimilarPair {
-    a: DirSide,
-    b: DirSide,
+pub struct SimilarPair {
+    pub a: DirSide,
+    pub b: DirSide,
     /// Relative paths present in both A and B with identical hashes — nothing to do.
-    identical: usize,
+    pub identical: usize,
     /// Relative paths present in both but with different hashes: (rel_path, hash_a, hash_b, modified_a, modified_b)
-    conflicts: Vec<(String, String, String, i64, i64)>,
+    pub conflicts: Vec<(String, String, String, i64, i64)>,
     /// Relative paths only in A: (rel_path, abs_path_in_a)
-    only_in_a: Vec<(String, String)>,
+    pub only_in_a: Vec<(String, String)>,
     /// Relative paths only in B: (rel_path, abs_path_in_b)
-    only_in_b: Vec<(String, String)>,
+    pub only_in_b: Vec<(String, String)>,
     /// Jaccard-like similarity score
-    score: f64,
+    pub score: f64,
 }
 
 // ---------------------------------------------------------------------------
@@ -268,107 +267,104 @@ fn walk_up_similar_mem(
     (path_a, path_b)
 }
 
-enum ConflictResolution {
+pub enum ConflictResolution {
     KeepOld,
     KeepNew,
     AskPerFile,
 }
 
-/// Perform the merge: copy files that are only in one side to the other side,
-/// and for conflicts apply the given resolution strategy.
+pub enum MergeEvent<'a> {
+    CopiedOnlyInA(&'a str),
+    CopiedOnlyInB(&'a str),
+    KeptNewer(&'a str),
+    KeptOlder(&'a str),
+}
+
+/// Per-file conflict choice; returning `KeepAllOld`/`KeepAllNew` locks in that
+/// choice for the remaining conflicts in this pair.
+pub enum FileConflictChoice {
+    KeepOld,
+    KeepNew,
+    KeepAllOld,
+    KeepAllNew,
+}
+
+/// Perform the merge: copy files that are only in one side to the other, and
+/// resolve conflicts via `resolution` / `on_conflict_file`.
+/// `on_event` receives a notification for each file action.
 /// Returns the number of files copied.
-fn merge_into(
+pub fn merge_into(
     pair: &SimilarPair,
     resolution: ConflictResolution,
-    stdin: &io::Stdin,
+    on_event: &mut impl FnMut(MergeEvent<'_>),
+    on_conflict_file: &mut impl FnMut(&str, &str, &str, &str, &str) -> Result<FileConflictChoice>,
 ) -> Result<usize> {
     let mut copied = 0;
 
-    // Files only in A → copy into B
     for (rel, src_abs) in &pair.only_in_a {
         let dst_abs = format!("{}/{}", pair.b.path, rel);
         file_system::copy_file(Path::new(src_abs), Path::new(&dst_abs))?;
-        println!("    Copied only-in-A into B: {}", rel);
+        on_event(MergeEvent::CopiedOnlyInA(rel));
         copied += 1;
     }
 
-    // Files only in B → copy into A
     for (rel, src_abs) in &pair.only_in_b {
         let dst_abs = format!("{}/{}", pair.a.path, rel);
         file_system::copy_file(Path::new(src_abs), Path::new(&dst_abs))?;
-        println!("    Copied only-in-B into A: {}", rel);
+        on_event(MergeEvent::CopiedOnlyInB(rel));
         copied += 1;
     }
 
-    // Conflicts: apply resolution strategy
-    // blanket overrides per-file choice when user picks [4] or [5]
-    let mut blanket: Option<ConflictResolution> = None;
+    let mut blanket: Option<bool> = None; // Some(true) = keep newer, Some(false) = keep older
 
     for (rel, _hash_a, _hash_b, mod_a, mod_b) in &pair.conflicts {
         let path_a = format!("{}/{}", pair.a.path, rel);
         let path_b = format!("{}/{}", pair.b.path, rel);
-
-        // Determine which path is older/newer
         let (older_path, newer_path) = if mod_a <= mod_b {
             (&path_a, &path_b)
         } else {
             (&path_b, &path_a)
         };
 
-        let keep_newer = match &blanket {
-            Some(ConflictResolution::KeepOld) => false,
-            Some(ConflictResolution::KeepNew) => true,
-            Some(ConflictResolution::AskPerFile) => unreachable!(),
-            None => {
-                match &resolution {
-                    ConflictResolution::KeepOld => false,
-                    ConflictResolution::KeepNew => true,
-                    ConflictResolution::AskPerFile => {
-                        // Show file info and prompt
-                        let fname = Path::new(rel)
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or(rel.as_str());
-                        let (date_old, date_new, side_old, side_new) = if mod_a <= mod_b {
-                            (utils::fmt_mtime(*mod_a), utils::fmt_mtime(*mod_b), "A", "B")
-                        } else {
-                            (utils::fmt_mtime(*mod_b), utils::fmt_mtime(*mod_a), "B", "A")
-                        };
-                        println!(
-                            "    {} (old [{}]: {}  new [{}]: {})",
-                            fname, side_old, date_old, side_new, date_new
-                        );
-                        loop {
-                            print!("    [1] keep old  [2] keep new  [4] keep all old  [5] keep all new > ");
-                            io::stdout().flush()?;
-                            let mut line = String::new();
-                            stdin.lock().read_line(&mut line)?;
-                            match line.trim() {
-                                "1" => break false,
-                                "2" => break true,
-                                "4" => {
-                                    blanket = Some(ConflictResolution::KeepOld);
-                                    break false;
-                                }
-                                "5" => {
-                                    blanket = Some(ConflictResolution::KeepNew);
-                                    break true;
-                                }
-                                _ => println!("    Please enter 1, 2, 4, or 5."),
-                            }
+        let keep_newer = if let Some(b) = blanket {
+            b
+        } else {
+            match &resolution {
+                ConflictResolution::KeepOld => false,
+                ConflictResolution::KeepNew => true,
+                ConflictResolution::AskPerFile => {
+                    let fname = Path::new(rel)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(rel.as_str());
+                    let (date_old, date_new, side_old, side_new) = if mod_a <= mod_b {
+                        (utils::fmt_mtime(*mod_a), utils::fmt_mtime(*mod_b), "A", "B")
+                    } else {
+                        (utils::fmt_mtime(*mod_b), utils::fmt_mtime(*mod_a), "B", "A")
+                    };
+                    let choice = on_conflict_file(fname, side_old, &date_old, side_new, &date_new)?;
+                    match choice {
+                        FileConflictChoice::KeepOld => false,
+                        FileConflictChoice::KeepNew => true,
+                        FileConflictChoice::KeepAllOld => {
+                            blanket = Some(false);
+                            false
+                        }
+                        FileConflictChoice::KeepAllNew => {
+                            blanket = Some(true);
+                            true
                         }
                     }
                 }
             }
         };
 
-        // Copy winning version to the losing side
         if keep_newer {
             file_system::copy_file(Path::new(newer_path), Path::new(older_path))?;
-            println!("    Kept newer: {}", rel);
+            on_event(MergeEvent::KeptNewer(rel));
         } else {
             file_system::copy_file(Path::new(older_path), Path::new(newer_path))?;
-            println!("    Kept older: {}", rel);
+            on_event(MergeEvent::KeptOlder(rel));
         }
         copied += 1;
     }
@@ -376,32 +372,33 @@ fn merge_into(
     Ok(copied)
 }
 
-/// Pure computation: find all similar-but-not-identical directory pairs at or
-/// above `threshold`, sorted by score descending. No I/O or prompting.
-fn compute_similar_pairs(
+pub enum SimilarProgress {
+    LoadingIndex,
+    FindingLeaves,
+    LeafCount(usize),
+    CheckingCandidates(usize),
+    CandidateProgress {
+        checked: usize,
+        total: usize,
+        found: usize,
+    },
+    Done,
+}
+
+pub fn compute_similar_pairs(
     conn: &Connection,
     threshold: f64,
     scanned_dirs: &[&Path],
+    on_progress: impl Fn(SimilarProgress),
 ) -> Result<Vec<SimilarPair>> {
-    // ------------------------------------------------------------------
-    // Phase 1: load everything into memory (2 queries total)
-    // ------------------------------------------------------------------
-    println!("Loading file index into memory...");
+    on_progress(SimilarProgress::LoadingIndex);
     let dir_index = build_dir_index(conn, scanned_dirs)?;
-
-    // Set of all known directory paths (for walk-up parent checks)
     let all_dir_paths: HashSet<String> = db::all_directory_paths(conn)?.into_iter().collect();
 
-    // ------------------------------------------------------------------
-    // Phase 2: find leaf directories
-    // ------------------------------------------------------------------
-    println!("Finding leaf directories...");
+    on_progress(SimilarProgress::FindingLeaves);
     let leaves = find_leaf_directories(conn, scanned_dirs)?;
-    println!("Found {} leaf directories.", leaves.len());
+    on_progress(SimilarProgress::LeafCount(leaves.len()));
 
-    // ------------------------------------------------------------------
-    // Phase 3: build candidate pairs (same name, file count within 20%)
-    // ------------------------------------------------------------------
     let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
     for path in &leaves {
         if let Some(name) = Path::new(path).file_name().and_then(|n| n.to_str()) {
@@ -412,8 +409,6 @@ fn compute_similar_pairs(
         }
     }
 
-    // File count for each leaf is just the size of its entry in dir_index
-    // (leaves have no children, so this equals their total recursive count too)
     let mut candidate_pairs: Vec<(String, String)> = Vec::new();
     for (_name, paths) in &by_name {
         if paths.len() < 2 {
@@ -436,32 +431,21 @@ fn compute_similar_pairs(
     }
 
     let total_candidates = candidate_pairs.len();
-    println!(
-        "Checking {} candidate leaf pairs (same name, similar file count)...",
-        total_candidates
-    );
+    on_progress(SimilarProgress::CheckingCandidates(total_candidates));
 
-    // ------------------------------------------------------------------
-    // Phase 4: score pairs, walk up, deduplicate
-    // ------------------------------------------------------------------
     let mut seen_pairs: HashSet<(String, String)> = HashSet::new();
-    // Track leaves that have been absorbed into a higher-level ancestor pair
     let mut absorbed_leaves: HashSet<String> = HashSet::new();
     let mut similar_pairs: Vec<SimilarPair> = Vec::new();
 
     for (checked, (leaf_a, leaf_b)) in candidate_pairs.iter().enumerate() {
-        // Progress indicator
         if checked % 50 == 0 || checked + 1 == total_candidates {
-            print!(
-                "\r\x1B[K  {}/{} pairs checked, {} similar found",
-                checked + 1,
-                total_candidates,
-                similar_pairs.len()
-            );
-            io::stdout().flush()?;
+            on_progress(SimilarProgress::CandidateProgress {
+                checked,
+                total: total_candidates,
+                found: similar_pairs.len(),
+            });
         }
 
-        // Skip if both leaves are already absorbed by an ancestor result
         if absorbed_leaves.contains(leaf_a) && absorbed_leaves.contains(leaf_b) {
             continue;
         }
@@ -471,7 +455,6 @@ fn compute_similar_pairs(
             _ => continue,
         };
 
-        // Walk up to find the highest similar ancestor
         let (top_a, top_b) = walk_up_similar_mem(
             &dir_index,
             &all_dir_paths,
@@ -481,27 +464,23 @@ fn compute_similar_pairs(
             scanned_dirs,
         );
 
-        // Normalise pair key
         let key = if top_a <= top_b {
             (top_a.clone(), top_b.clone())
         } else {
             (top_b.clone(), top_a.clone())
         };
         if seen_pairs.contains(&key) {
-            // Still absorb these leaves even though the pair is already recorded
             absorbed_leaves.insert(leaf_a.clone());
             absorbed_leaves.insert(leaf_b.clone());
             continue;
         }
         seen_pairs.insert(key);
 
-        // Mark both leaves (and any leaves under the top-level ancestors) as absorbed
         absorbed_leaves.insert(leaf_a.clone());
         absorbed_leaves.insert(leaf_b.clone());
 
-        // Re-compare at the top level
         let top_pair = if top_a == *leaf_a && top_b == *leaf_b {
-            pair // didn't walk up, reuse
+            pair
         } else {
             match compare_dirs_mem(&dir_index, &top_a, &top_b) {
                 Some(p) if p.score >= threshold => p,
@@ -509,8 +488,6 @@ fn compute_similar_pairs(
             }
         };
 
-        // Skip exact duplicates (score 1.0, no conflicts, nothing only in one side) —
-        // they produce a no-op merge and are already handled by duplicate detection.
         if top_pair.only_in_a.is_empty()
             && top_pair.only_in_b.is_empty()
             && top_pair.conflicts.is_empty()
@@ -520,148 +497,15 @@ fn compute_similar_pairs(
 
         similar_pairs.push(top_pair);
     }
-    println!(); // end progress line
+    on_progress(SimilarProgress::Done);
 
-    // Sort by score descending (scores are rational numbers, so NaN is impossible)
-    similar_pairs.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    similar_pairs.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Ok(similar_pairs)
-}
-
-pub fn find_similar_directories(
-    conn: &Connection,
-    threshold: f64,
-    scanned_dirs: &[&Path],
-    merge: bool,
-) -> Result<()> {
-    let similar_pairs = compute_similar_pairs(conn, threshold, scanned_dirs)?;
-
-    if similar_pairs.is_empty() {
-        println!("No similar (but non-identical) directory pairs found.");
-        return Ok(());
-    }
-
-    println!(
-        "\nFound {} similar directory pair(s) (similarity >= {:.0}%):\n",
-        similar_pairs.len(),
-        threshold * 100.0
-    );
-
-    let stdin = io::stdin();
-
-    for pair in &similar_pairs {
-        println!(
-            "Similar directories ({:.1}% match, {} identical, {} conflict(s), {} only-in-A, {} only-in-B):",
-            pair.score * 100.0,
-            pair.identical,
-            pair.conflicts.len(),
-            pair.only_in_a.len(),
-            pair.only_in_b.len(),
-        );
-        println!("  [A] {} ({} files)", pair.a.path, pair.a.file_count);
-        println!("  [B] {} ({} files)", pair.b.path, pair.b.file_count);
-
-        if !pair.only_in_a.is_empty() {
-            println!("  Only in A ({}):", pair.only_in_a.len());
-            for (rel, _) in pair.only_in_a.iter().take(10) {
-                println!("    + {}", rel);
-            }
-            if pair.only_in_a.len() > 10 {
-                println!("    ... and {} more", pair.only_in_a.len() - 10);
-            }
-        }
-
-        if !pair.only_in_b.is_empty() {
-            println!("  Only in B ({}):", pair.only_in_b.len());
-            for (rel, _) in pair.only_in_b.iter().take(10) {
-                println!("    + {}", rel);
-            }
-            if pair.only_in_b.len() > 10 {
-                println!("    ... and {} more", pair.only_in_b.len() - 10);
-            }
-        }
-
-        let newer_in_a = pair
-            .conflicts
-            .iter()
-            .filter(|(_, _, _, ma, mb)| ma >= mb)
-            .count();
-        let newer_in_b = pair.conflicts.len() - newer_in_a;
-        if !pair.conflicts.is_empty() {
-            println!(
-                "  Conflicts ({} total — {} newer in A, {} newer in B):",
-                pair.conflicts.len(),
-                newer_in_a,
-                newer_in_b,
-            );
-            for (rel, _, _, mod_a, mod_b) in pair.conflicts.iter().take(5) {
-                let (newer, date) = if mod_a >= mod_b {
-                    ("A", utils::fmt_mtime(*mod_a))
-                } else {
-                    ("B", utils::fmt_mtime(*mod_b))
-                };
-                println!("    ~ {} (newer [{}]: {})", rel, newer, date);
-            }
-            if pair.conflicts.len() > 5 {
-                println!("    ... and {} more", pair.conflicts.len() - 5);
-            }
-        }
-
-        if !merge {
-            println!();
-            continue;
-        }
-
-        let files_to_copy = pair.only_in_a.len() + pair.only_in_b.len() + pair.conflicts.len();
-        println!(
-            "  Will copy up to {} file(s) to make both sides identical.",
-            files_to_copy
-        );
-        println!(
-            "    [A] {} ({} files, {} exclusive, {} newer in conflicts)",
-            pair.a.path,
-            pair.a.file_count,
-            pair.only_in_a.len(),
-            newer_in_a,
-        );
-        println!(
-            "    [B] {} ({} files, {} exclusive, {} newer in conflicts)",
-            pair.b.path,
-            pair.b.file_count,
-            pair.only_in_b.len(),
-            newer_in_b,
-        );
-
-        let resolution_opt: Option<ConflictResolution> = loop {
-            print!("  Resolve conflicts with: [1] keep old  [2] keep new  [3] ask file by file  [s] skip > ");
-            io::stdout().flush()?;
-            let mut line = String::new();
-            stdin.lock().read_line(&mut line)?;
-            match line.trim().to_ascii_lowercase().as_str() {
-                "1" => break Some(ConflictResolution::KeepOld),
-                "2" => break Some(ConflictResolution::KeepNew),
-                "3" => break Some(ConflictResolution::AskPerFile),
-                "s" => break None,
-                _ => println!("  Please enter 1, 2, 3, or s."),
-            }
-        };
-
-        let resolution = match resolution_opt {
-            None => {
-                println!("  Skipped.");
-                println!();
-                continue;
-            }
-            Some(r) => r,
-        };
-
-        let copied = merge_into(pair, resolution, &stdin)?;
-        println!("  Merge complete: {} file(s) copied.", copied);
-        println!("  Note: re-run without --similarity to detect exact duplicates and delete them.");
-        println!();
-    }
-
-    Ok(())
 }
 
 // ------------------------------------------------------------------
@@ -711,7 +555,7 @@ mod tests {
     fn test_find_similar_empty_db() {
         // Smoke test: empty database should return Ok(()) without panicking.
         let conn = open_test_db();
-        let pairs = compute_similar_pairs(&conn, 0.9, &[]).unwrap();
+        let pairs = compute_similar_pairs(&conn, 0.9, &[], |_| ()).unwrap();
         assert!(pairs.is_empty());
     }
 
@@ -720,7 +564,7 @@ mod tests {
         // Base: 1 shared file → both dirs are identical; should not be reported.
         let conn = open_test_db();
         setup_two_photo_dirs(&conn, 1);
-        let pairs = compute_similar_pairs(&conn, 0.9, &[]).unwrap();
+        let pairs = compute_similar_pairs(&conn, 0.9, &[], |_| ()).unwrap();
         assert!(
             pairs.is_empty(),
             "identical dirs should not be reported as similar"
@@ -737,7 +581,7 @@ mod tests {
             "INSERT INTO files VALUES ('/a/photos/Thumbs.db', 'thumbhash', 10, 1000);",
         )
         .unwrap();
-        let pairs = compute_similar_pairs(&conn, 0.85, &[]).unwrap();
+        let pairs = compute_similar_pairs(&conn, 0.85, &[], |_| ()).unwrap();
         assert_eq!(pairs.len(), 1, "expected exactly one similar pair");
         assert!(pairs[0].score >= 0.85, "score should meet threshold");
         assert_eq!(pairs[0].only_in_a.len(), 1, "Thumbs.db should be only-in-A");
@@ -775,8 +619,14 @@ mod tests {
         .unwrap();
         let root = std::path::Path::new("/a");
         let index = build_dir_index(&conn, &[root]).unwrap();
-        assert!(index.contains_key("/a/photos"), "/a/photos should be indexed");
-        assert!(!index.contains_key("/b/photos"), "/b/photos should be filtered out");
+        assert!(
+            index.contains_key("/a/photos"),
+            "/a/photos should be indexed"
+        );
+        assert!(
+            !index.contains_key("/b/photos"),
+            "/b/photos should be filtered out"
+        );
     }
 
     #[test]
@@ -791,8 +641,14 @@ mod tests {
         .unwrap();
         let index = build_dir_index(&conn, &[]).unwrap();
         let files = files_for_dir(&index, "/a");
-        assert!(files.contains_key("root.txt"), "root-level file should be included");
-        assert!(files.contains_key("sub/child.txt"), "subdirectory file should be included with relative path");
+        assert!(
+            files.contains_key("root.txt"),
+            "root-level file should be included"
+        );
+        assert!(
+            files.contains_key("sub/child.txt"),
+            "subdirectory file should be included with relative path"
+        );
         assert_eq!(files.len(), 2);
     }
 
@@ -807,7 +663,7 @@ mod tests {
              INSERT INTO files VALUES ('/b/photos/conflict.jpg', 'hashB_conflict', 500, 2000);",
         )
         .unwrap();
-        let pairs = compute_similar_pairs(&conn, 0.85, &[]).unwrap();
+        let pairs = compute_similar_pairs(&conn, 0.85, &[], |_| ()).unwrap();
         assert_eq!(pairs.len(), 1);
         assert_eq!(pairs[0].conflicts.len(), 1, "expected one conflict");
         let (rel, hash_a, hash_b, mod_a, mod_b) = &pairs[0].conflicts[0];
@@ -836,7 +692,7 @@ mod tests {
             ));
         }
         conn.execute_batch(&batch).unwrap();
-        let pairs = compute_similar_pairs(&conn, 0.9, &[]).unwrap();
+        let pairs = compute_similar_pairs(&conn, 0.9, &[], |_| ()).unwrap();
         assert!(
             pairs.is_empty(),
             "dirs below threshold should not be reported"
