@@ -192,6 +192,19 @@ pub fn upsert_file(
 pub fn move_file(conn: &Connection, old_path: &Path, new_path: &Path) -> Result<()> {
     let old = utils::path_to_str(old_path)?;
     let new = utils::path_to_str(new_path)?;
+
+    // By the time this is called, the filesystem move has already succeeded, so
+    // resolve_dest already confirmed `new_path` was free on disk. Any existing DB
+    // entry at this path is therefore a ghost (e.g. a sync client renamed the file
+    // mid-run). Remove it so the UPDATE below doesn't hit a PK conflict.
+    let removed = conn.execute("DELETE FROM files WHERE path = ?1", params![new])?;
+    if removed > 0 {
+        eprintln!(
+            "Warning: removed ghost DB entry for {} (file was renamed by another process mid-run)",
+            new_path.display()
+        );
+    }
+
     conn.execute(
         "UPDATE files SET path = ?1 WHERE path = ?2",
         params![new, old],

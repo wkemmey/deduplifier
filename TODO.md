@@ -66,3 +66,8 @@ UI mixed with logic in similar.rs and duplicates.rs — you have this in your TO
 
 
 photos.rs has similar UI/logic mixing — sort_photos both does DB operations and prints progress.
+
+
+
+
+cargo run -- "/home/whit/Dropbox/kemmey2016/family/Family/Pictures to Send/" --sort-photos --canon /home/whit/Dropbox/photos/ --delete --no-confirmation
