@@ -48,17 +48,19 @@
   # environment variables
   env = {
     RUST_BACKTRACE = "1";
+    # The mingw gcc package in `packages` clobbers CC with the cross-compiler.
+    # Override it back to the native gcc so `cargo build/test` (without a target)
+    # compiles for Linux. CC_x86_64_pc_windows_gnu tells build scripts (e.g.
+    # libsqlite3-sys) which C compiler to use when cross-compiling C for Windows.
+    CC = "gcc";
+    CXX = "g++";
+    CC_x86_64_pc_windows_gnu = "x86_64-w64-mingw32-gcc";
   };
 
-  # Restore CC to the native Linux compiler after the mingw gcc package clobbers it.
-  # The mingw gcc is still on PATH (so cargo can find x86_64-w64-mingw32-gcc via
-  # .cargo/config.toml), but native cargo build/test uses the correct host compiler.
-  # CC_x86_64_pc_windows_gnu tells cargo's build scripts (e.g. libsqlite3-sys) which
-  # C compiler to use when cross-compiling C code for the Windows target.
+  # Restore CC in interactive devenv shells too (enterShell runs on `devenv shell`).
   enterShell = ''
-    export CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc
-    export CC=$CC_FOR_BUILD
-    export CXX=$CXX_FOR_BUILD
+    export CC=gcc
+    export CXX=g++
   '';
 
   # scripts for common tasks
