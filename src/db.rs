@@ -415,6 +415,12 @@ mod tests {
     // Helpers
     // -----------------------------------------------------------------------
 
+    /// Convert a Unix-style test path to the OS path separator.
+    /// Needed so LIKE patterns (which use MAIN_SEPARATOR) match stored paths.
+    fn p(s: &str) -> String {
+        s.replace('/', std::path::MAIN_SEPARATOR_STR)
+    }
+
     fn insert_file_raw(conn: &Connection, path: &str, hash: &str, size: i64, modified: i64) {
         conn.execute(
             "INSERT INTO files (path, hash, size, modified) VALUES (?1, ?2, ?3, ?4)",
@@ -631,12 +637,12 @@ mod tests {
     #[test]
     fn test_stale_file_count_one_missing() {
         let conn = open_test_db();
-        insert_file_raw(&conn, "/root/a.txt", "h1", 10, 1);
-        insert_file_raw(&conn, "/root/b.txt", "h2", 10, 2);
+        insert_file_raw(&conn, &p("/root/a.txt"), "h1", 10, 1);
+        insert_file_raw(&conn, &p("/root/b.txt"), "h2", 10, 2);
         init_visited_files(&conn).unwrap();
-        mark_visited(&conn, "/root/a.txt").unwrap();
+        mark_visited(&conn, &p("/root/a.txt")).unwrap();
         // b.txt not visited → stale
-        assert_eq!(stale_file_count(&conn, "/root").unwrap(), 1);
+        assert_eq!(stale_file_count(&conn, &p("/root")).unwrap(), 1);
     }
 
     #[test]
@@ -653,17 +659,17 @@ mod tests {
     #[test]
     fn test_delete_stale_files() {
         let conn = open_test_db();
-        insert_file_raw(&conn, "/root/keep.txt", "h1", 10, 1);
-        insert_file_raw(&conn, "/root/gone.txt", "h2", 10, 2);
+        insert_file_raw(&conn, &p("/root/keep.txt"), "h1", 10, 1);
+        insert_file_raw(&conn, &p("/root/gone.txt"), "h2", 10, 2);
         init_visited_files(&conn).unwrap();
-        mark_visited(&conn, "/root/keep.txt").unwrap();
+        mark_visited(&conn, &p("/root/keep.txt")).unwrap();
 
-        delete_stale_files(&conn, "/root").unwrap();
+        delete_stale_files(&conn, &p("/root")).unwrap();
 
-        assert!(get_file(&conn, Path::new("/root/keep.txt"))
+        assert!(get_file(&conn, Path::new(&p("/root/keep.txt")))
             .unwrap()
             .is_some());
-        assert_eq!(get_file(&conn, Path::new("/root/gone.txt")).unwrap(), None);
+        assert_eq!(get_file(&conn, Path::new(&p("/root/gone.txt"))).unwrap(), None);
     }
 
     // -----------------------------------------------------------------------
@@ -681,18 +687,18 @@ mod tests {
     #[test]
     fn test_child_directories_returns_immediate_only() {
         let conn = open_test_db();
-        insert_dir_raw(&conn, "/root/child", "hc", 10);
-        insert_dir_raw(&conn, "/root/child/grandchild", "hg", 5);
-        insert_dir_raw(&conn, "/root/other", "ho", 8);
-        insert_dir_raw(&conn, "/unrelated", "hu", 1);
+        insert_dir_raw(&conn, &p("/root/child"), "hc", 10);
+        insert_dir_raw(&conn, &p("/root/child/grandchild"), "hg", 5);
+        insert_dir_raw(&conn, &p("/root/other"), "ho", 8);
+        insert_dir_raw(&conn, &p("/unrelated"), "hu", 1);
 
-        let kids = child_directories(&conn, Path::new("/root")).unwrap();
+        let kids = child_directories(&conn, Path::new(&p("/root"))).unwrap();
         let paths: Vec<&str> = kids.iter().map(|r| r.path.as_str()).collect();
         // Only immediate children, not grandchild or unrelated
-        assert!(paths.contains(&"/root/child"));
-        assert!(paths.contains(&"/root/other"));
-        assert!(!paths.contains(&"/root/child/grandchild"));
-        assert!(!paths.contains(&"/unrelated"));
+        assert!(paths.contains(&p("/root/child").as_str()));
+        assert!(paths.contains(&p("/root/other").as_str()));
+        assert!(!paths.contains(&p("/root/child/grandchild").as_str()));
+        assert!(!paths.contains(&p("/unrelated").as_str()));
     }
 
     // -----------------------------------------------------------------------
@@ -788,46 +794,49 @@ mod tests {
     #[test]
     fn test_remove_tree_removes_all_files_and_dirs() {
         let conn = open_test_db();
-        insert_dir_raw(&conn, "/tree", "dh1", 100);
-        insert_dir_raw(&conn, "/tree/sub", "dh2", 50);
-        insert_file_raw(&conn, "/tree/a.txt", "fh1", 10, 1);
-        insert_file_raw(&conn, "/tree/sub/b.txt", "fh2", 10, 2);
-        insert_dir_raw(&conn, "/other", "dh3", 10);
-        insert_file_raw(&conn, "/other/c.txt", "fh3", 10, 3);
+        insert_dir_raw(&conn, &p("/tree"), "dh1", 100);
+        insert_dir_raw(&conn, &p("/tree/sub"), "dh2", 50);
+        insert_file_raw(&conn, &p("/tree/a.txt"), "fh1", 10, 1);
+        insert_file_raw(&conn, &p("/tree/sub/b.txt"), "fh2", 10, 2);
+        insert_dir_raw(&conn, &p("/other"), "dh3", 10);
+        insert_file_raw(&conn, &p("/other/c.txt"), "fh3", 10, 3);
 
-        remove_tree(&conn, Path::new("/tree")).unwrap();
+        remove_tree(&conn, Path::new(&p("/tree"))).unwrap();
 
         // Everything under /tree is gone
+        let tree_pat = p("/tree%");
         let file_count: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM files WHERE path LIKE '/tree%'",
-                [],
+                "SELECT COUNT(*) FROM files WHERE path LIKE ?1",
+                params![tree_pat],
                 |r| r.get(0),
             )
             .unwrap();
         assert_eq!(file_count, 0);
         let dir_count: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM directories WHERE path LIKE '/tree%'",
-                [],
+                "SELECT COUNT(*) FROM directories WHERE path LIKE ?1",
+                params![tree_pat],
                 |r| r.get(0),
             )
             .unwrap();
         assert_eq!(dir_count, 0);
 
         // /other is untouched
+        let other_pat = p("/other%");
+        let other_exact = p("/other");
         let other_files: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM files WHERE path LIKE '/other%'",
-                [],
+                "SELECT COUNT(*) FROM files WHERE path LIKE ?1",
+                params![other_pat],
                 |r| r.get(0),
             )
             .unwrap();
         assert_eq!(other_files, 1);
         let other_dirs: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM directories WHERE path = '/other'",
-                [],
+                "SELECT COUNT(*) FROM directories WHERE path = ?1",
+                params![other_exact],
                 |r| r.get(0),
             )
             .unwrap();
@@ -837,18 +846,18 @@ mod tests {
     #[test]
     fn test_remove_tree_does_not_affect_siblings() {
         let conn = open_test_db();
-        insert_dir_raw(&conn, "/photos/12", "dh1", 10);
-        insert_file_raw(&conn, "/photos/12/a.jpg", "fh1", 10, 1);
-        insert_dir_raw(&conn, "/photos/123", "dh2", 10);
-        insert_file_raw(&conn, "/photos/123/b.jpg", "fh2", 10, 2);
+        insert_dir_raw(&conn, &p("/photos/12"), "dh1", 10);
+        insert_file_raw(&conn, &p("/photos/12/a.jpg"), "fh1", 10, 1);
+        insert_dir_raw(&conn, &p("/photos/123"), "dh2", 10);
+        insert_file_raw(&conn, &p("/photos/123/b.jpg"), "fh2", 10, 2);
 
-        remove_tree(&conn, Path::new("/photos/12")).unwrap();
+        remove_tree(&conn, Path::new(&p("/photos/12"))).unwrap();
 
         assert_eq!(
-            get_file(&conn, Path::new("/photos/12/a.jpg")).unwrap(),
+            get_file(&conn, Path::new(&p("/photos/12/a.jpg"))).unwrap(),
             None
         );
-        assert!(get_file(&conn, Path::new("/photos/123/b.jpg"))
+        assert!(get_file(&conn, Path::new(&p("/photos/123/b.jpg")))
             .unwrap()
             .is_some());
         assert!(directories_with_hash(&conn, "dh2").unwrap().len() == 1);

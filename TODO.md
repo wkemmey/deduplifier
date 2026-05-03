@@ -75,4 +75,11 @@ The build-windows script in devenv will now work too since it runs the same comm
 
 
 
+
+The one thing to be aware of: any tests that use hardcoded Unix paths like /a/b/c will fail on Windows. We discussed this before — the DB-only tests in db.rs and duplicates.rs are safe (paths are just strings in SQLite), but any test that does actual filesystem operations with Unix paths would fail. You'd want to look at those before running on Windows for the first time.
+
+
+
+
+
 cargo run -- "/home/whit/Dropbox/kemmey2016/family/Family/Pictures to Send/" --sort-photos --canon /home/whit/Dropbox/photos/ --delete --no-confirmation

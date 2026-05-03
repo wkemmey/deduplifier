@@ -11,8 +11,9 @@
 
   # common rust development packages
   packages = with pkgs; [
-    # cross-compilation to Windows
-    pkgsCross.mingwW64.stdenv.cc      # mingw-w64 linker for x86_64-pc-windows-gnu
+    # cross-compilation to Windows: expose the mingw-w64 gcc on PATH without
+    # setting CC, so the native Linux CC is not overridden.
+    pkgsCross.mingwW64.buildPackages.gcc
 
     # build tools
     cargo-watch      # watch for changes and rebuild
@@ -48,6 +49,17 @@
   env = {
     RUST_BACKTRACE = "1";
   };
+
+  # Restore CC to the native Linux compiler after the mingw gcc package clobbers it.
+  # The mingw gcc is still on PATH (so cargo can find x86_64-w64-mingw32-gcc via
+  # .cargo/config.toml), but native cargo build/test uses the correct host compiler.
+  # CC_x86_64_pc_windows_gnu tells cargo's build scripts (e.g. libsqlite3-sys) which
+  # C compiler to use when cross-compiling C code for the Windows target.
+  enterShell = ''
+    export CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc
+    export CC=$CC_FOR_BUILD
+    export CXX=$CXX_FOR_BUILD
+  '';
 
   # scripts for common tasks
   scripts = {
