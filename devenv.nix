@@ -5,17 +5,15 @@
   
   languages.rust = {
     enable = true;
-    # using stable channel by default, can override per-project
-    # channel = "stable"; # requires rust-overlay input
-    # NOTE: adding targets (e.g. for Windows cross-compilation) requires
-    # channel = "stable", which in turn requires rust-overlay as a devenv
-    # input. This is currently broken due to a version mismatch between
-    # devenv's pinned rust-overlay and the one added via `devenv inputs add`.
-    # Revisit when devenv is updated.
+    channel = "stable";
+    targets = [ "x86_64-pc-windows-gnu" ];
   };
 
   # common rust development packages
   packages = with pkgs; [
+    # cross-compilation to Windows
+    pkgsCross.mingwW64.stdenv.cc      # mingw-w64 linker for x86_64-pc-windows-gnu
+
     # build tools
     cargo-watch      # watch for changes and rebuild
     cargo-edit       # cargo add, cargo rm, cargo upgrade commands

@@ -69,5 +69,10 @@ photos.rs has similar UI/logic mixing — sort_photos both does DB operations an
 
 
 
+The build-windows script in devenv will now work too since it runs the same command. The one caveat: the nix store path in config.toml is hardcoded — if you garbage collect and it disappears, you'd need to re-run nix build nixpkgs#pkgsCross.mingwW64.windows.pthreads to restore it. We could make this more robust, but it works for now.
+
+
+
+
 
 cargo run -- "/home/whit/Dropbox/kemmey2016/family/Family/Pictures to Send/" --sort-photos --canon /home/whit/Dropbox/photos/ --delete --no-confirmation
